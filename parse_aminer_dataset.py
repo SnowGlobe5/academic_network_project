@@ -26,8 +26,8 @@ next_author_id = -1
 authors_name_to_id = {}
 
 # topics_map is also topics_id, because topic is identified by its name
-next_topic_id = -1
-topics_count = {}
+# next_topic_id = -1
+# topics_count = {}
 
 # journals_map is also journals_id, because journal is identified by its name
 next_journal_id = -1
@@ -62,18 +62,18 @@ def get_author_id(author):
             return next_author_id
 
 
-def get_topic_id(topic):
-    topic = topic.strip().title()
-    id = topics_map.get(topic)
-    if id:
-        topics_count[id] += 1
-        return id
-    else:
-        global next_topic_id
-        next_topic_id += 1
-        topics_count[next_topic_id] = 0
-        topics_map[topic] = next_topic_id
-        return next_topic_id
+# def get_topic_id(topic):
+#     topic = topic.strip().title()
+#     id = topics_map.get(topic)
+#     if id:
+#         topics_count[id] += 1
+#         return id
+#     else:
+#         global next_topic_id
+#         next_topic_id += 1
+#         topics_count[next_topic_id] = 0
+#         topics_map[topic] = next_topic_id
+#         return next_topic_id
 
 
 def get_journal_id(journal):
@@ -129,14 +129,22 @@ def extract_dataset(root):
             if input_paper.get('fos'):
                 # About
                 for input_topic in input_paper['fos']:
-                    topic_id = get_topic_id(input_topic['name'])
-                    about_edge.add((paper_id, topic_id))
+                    # topic_id = get_topic_id(input_topic['name'])
+                    if topics_map.get(input_topic['name'].strip().title()):
+                        topics_map[input_topic['name'].strip().title()] += 1
+                    else:
+                        topics_map[input_topic['name'].strip().title()] = 1
+                    about_edge.add((paper_id, input_topic['name'].strip().title()))
 
             if input_paper.get('keywords'):
                 # About
                 for input_topic in input_paper['keywords']:
-                    topic_id = get_topic_id(input_topic)
-                    about_edge.add((paper_id, topic_id))
+                    # topic_id = get_topic_id(input_topic)
+                    if topics_map.get(input_topic.strip().title()):
+                        topics_map[input_topic.strip().title()] += 1
+                    else:
+                        topics_map[input_topic.strip().title()] = 1
+                    about_edge.add((paper_id, input_topic.strip().title()))
 
             # Cites
             if input_paper.get('references'):
@@ -182,9 +190,9 @@ def extract_dataset(root):
     topics_file.write("id,name\n")
     new_topic_ids = {}
     new_topic_id = 0
-    for name, id in topics_map.items():
-        if topics_count.get(id) > 0:
-            new_topic_ids[id] = new_topic_id
+    for name, count in topics_map.items():
+        if count > 1:
+            new_topic_ids[name] = new_topic_id
             topics_file.write(f"{new_topic_id},\"{name}\"\n")
             new_topic_id += 1
     topics_file.close()

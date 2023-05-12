@@ -72,7 +72,7 @@ class ANPDataset(InMemoryDataset):
 
     def download(self):
         if not os.path.exists(f"{self.root}/mapping"):
-            if not os.path.exists(f"dblp_v14.tar.gz"):
+            if not os.path.exists(f"dblp_v14.json"):
                 print("Start download...")
                 urllib.request.urlretrieve("https://originalfileserver.aminer.cn/misc/dblp_v14.tar.gz",
                                            "dblp_v14.tar.gz")
