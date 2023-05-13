@@ -52,4 +52,4 @@ class ANPDataLoader(torch.utils.data.DataLoader):
         subset_dict['paper'] = torch.tensor(papers_list_year)
         papers_list_year.extend(papers_list_next_year)
         subset_dict_next_year['paper'] = torch.tensor(papers_list_year)
-        return data.subgraph(subset_dict), data.subgraph(subset_dict_next_year), authors_filter_list.tolist(), papers_list_next_year
+        return data.subgraph(subset_dict), data.subgraph(subset_dict_next_year), sorted(authors_filter_list.tolist()), papers_list_next_year

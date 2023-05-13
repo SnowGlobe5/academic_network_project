@@ -120,8 +120,8 @@ class ANPDataset(InMemoryDataset):
         )
 
         data = HeteroData()
-        # data['author'].num_nodes = len(author_list) + 1  # Authors do not have any features.
-        # data['topic'].num_nodes = len(topic_list) + 1  # Topics do not have any features.
+        data['author'].num_nodes = len(author_list)  # Authors do not have any features.
+        data['topic'].num_nodes = len(topic_list) # Topics do not have any features.
         data['paper'].x = paper_x
         data['paper']['id'] = torch.Tensor(paper_list)
         data['author']['id'] = torch.Tensor(author_list)
