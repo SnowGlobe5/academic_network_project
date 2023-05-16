@@ -21,13 +21,13 @@ def get_papers_per_author_year(data, author, papers_year_list):
 
 
 def expand_1_hop_edge_index(edge_index, node, flow):
-    _, sub_edge_index, _, _ = k_hop_subgraph(node, 1, edge_index, flow=flow)
+    # _, sub_edge_index, _, _ = k_hop_subgraph(node, 1, edge_index, flow=flow)
     # Clean
     if flow == 'target_to_source':
-        mask = sub_edge_index[0] == node
+        mask = edge_index[0] == node
     else:
-        mask = sub_edge_index[1] == node
-    return sub_edge_index[:, mask]
+        mask = edge_index[1] == node
+    return edge_index[:, mask]
 
 
 def expand_1_hop_graph(data, paths, last_expanded, list_node_to_expand):
@@ -223,12 +223,13 @@ def main():
 
     time = datetime.now()
     for i, author in enumerate(history_author_list):
-        # time = datetime.now()
-        history, paths, last_expanded = create_history_graph(sub_graph, i)
-        # print(f"History creation time: {str(datetime.now() - time)}")
-        # time = datetime.now()
-        get_infosphere(sub_graph, sub_graph_next_year, i, paths, papers_next_year, last_expanded, 3)
-        # print(f"Infosphere creation time: {str(datetime.now() - time)}")
+        if author == 74662:
+            time = datetime.now()
+            history, paths, last_expanded = create_history_graph(sub_graph, i)
+            print(f"History creation time: {str(datetime.now() - time)}")
+            time = datetime.now()
+            get_infosphere(sub_graph, sub_graph_next_year, i, paths, papers_next_year, last_expanded, 3)
+            print(f"Infosphere creation time: {str(datetime.now() - time)}")
     print(f"History & Infosphere creation time for a fold: {str(datetime.now() - time)}")
 
 
