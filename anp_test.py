@@ -1,6 +1,7 @@
 from datetime import datetime
 
 import torch
+import cProfile
 from torch_geometric.utils import k_hop_subgraph
 
 from anp_dataloader import ANPDataLoader
@@ -97,7 +98,7 @@ def lazy_expand_graph(data, paths, last_expanded, node, expansion):
         lazy_expand_graph(data, paths, last_expanded, node, expansion)
 
 
-def create_history_graph(data, author_id):
+def create_history_graph_old(data, author_id):
     paths = {
         PAPER: {},
         AUTHOR: {},
@@ -150,7 +151,7 @@ def create_history_graph(data, author_id):
     return subset_dict, paths, last_expanded
 
 
-def get_infosphere(data, data_next_year, author_id, paths, papers_next_year, last_expanded, max_expansion):
+def get_infosphere_old(data, data_next_year, author_id, paths, papers_next_year, last_expanded, max_expansion):
     author_papers_next_year = get_papers_per_author_year(data_next_year, author_id, papers_next_year)
     # FFprint(author_papers_next_year)
     expansion = [2, 2, 2]
@@ -205,6 +206,68 @@ def get_infosphere(data, data_next_year, author_id, paths, papers_next_year, las
                             break
 
 
+def get_history_infosphere(data, data_next_year, author_id, papers_next_year):
+    author_papers_next_year = get_papers_per_author_year(data_next_year, author_id, papers_next_year)
+    writes_edge_index = data_next_year['author', 'writes', 'paper'].edge_index
+    cites_edge_index = data_next_year['paper', 'cites', 'paper'].edge_index
+    about_edge_index = data_next_year['paper', 'about', 'topic'].edge_index
+    infosphere = [{}, {}, {}]
+
+    paper_user = set()
+    author_user = set()
+    topic_user = set()
+
+    paper_seed = set()
+    author_seed = set()
+    topic_seed = set()
+
+    paper_user_scanned = set()
+    author_user_scanned = set()
+    topic_user_scanned = set()
+
+    paper_infosphere = set()
+    author_infosphere = set()
+    topic_infosphere = set()
+
+    sub_edge_index = expand_1_hop_edge_index(writes_edge_index, author_id, flow='target_to_source')
+    author_papers = sub_edge_index[1]
+    for paper in author_papers.tolist():
+        # cited papers
+        sub_edge_index = expand_1_hop_edge_index(cites_edge_index, paper, flow='target_to_source')
+        mask = torch.isin(sub_edge_index[1], torch.tensor(papers_next_year).to('cuda:0'), invert=True)
+        for cited_paper in sub_edge_index[:, mask][1].tolist():
+            paper_user.add(cited_paper)
+
+        # co-authors
+        sub_edge_index = expand_1_hop_edge_index(writes_edge_index, paper, flow='source_to_target')
+        mask = sub_edge_index[0] != author_id
+        for co_author in sub_edge_index[:, mask][0].tolist():
+            author_user.add(co_author)
+
+        # topic
+        sub_edge_index = expand_1_hop_edge_index(about_edge_index, paper, flow='target_to_source')
+        for topic in sub_edge_index[1].tolist():
+            topic_user.add(topic)
+
+    for paper in author_papers_next_year:
+        # cited papers
+        sub_edge_index = expand_1_hop_edge_index(cites_edge_index, paper, flow='target_to_source')
+        mask = torch.isin(sub_edge_index[1], torch.tensor(papers_next_year).to('cuda:0'), invert=True)
+        for cited_paper in sub_edge_index[:, mask][1].tolist():
+            paper_seed.add(cited_paper)
+
+        # co-authors
+        sub_edge_index = expand_1_hop_edge_index(writes_edge_index, paper, flow='source_to_target')
+        mask = sub_edge_index[0] != author_id
+        for co_author in sub_edge_index[:, mask][0].tolist():
+            author_seed.add(co_author)
+
+        # topic
+        sub_edge_index = expand_1_hop_edge_index(about_edge_index, paper, flow='target_to_source')
+        for topic in sub_edge_index[1].tolist():
+            topic_seed.add(topic)
+
+
 def main():
     fold = 1
     max_year = 2019
@@ -225,13 +288,10 @@ def main():
     for i, author in enumerate(history_author_list):
         if author == 74662:
             time = datetime.now()
-            history, paths, last_expanded = create_history_graph(sub_graph, i)
-            print(f"History creation time: {str(datetime.now() - time)}")
-            time = datetime.now()
-            get_infosphere(sub_graph, sub_graph_next_year, i, paths, papers_next_year, last_expanded, 3)
+            get_history_infosphere(sub_graph, sub_graph_next_year, i, papers_next_year)
             print(f"Infosphere creation time: {str(datetime.now() - time)}")
     print(f"History & Infosphere creation time for a fold: {str(datetime.now() - time)}")
 
 
 if __name__ == "__main__":
-    main()
+    cProfile.run('main()')
