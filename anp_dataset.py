@@ -12,7 +12,7 @@ from parse_aminer_dataset import extract_dataset
 
 def load_node_csv(path, index_col, encoders=None, **kwargs):
     df = pd.read_csv(path, index_col=index_col, **kwargs).sort_index()
-    list = [index for index in df.index.to_list()]
+    list = [index for index in df.index.unique().to_list()]
 
     x = None
     if encoders is not None:

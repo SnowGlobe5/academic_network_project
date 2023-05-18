@@ -191,7 +191,7 @@ def extract_dataset(root):
     new_topic_ids = {}
     new_topic_id = 0
     for name, count in topics_map.items():
-        if count > 1:
+        if count > 10:
             new_topic_ids[name] = new_topic_id
             topics_file.write(f"{new_topic_id},\"{name}\"\n")
             new_topic_id += 1
