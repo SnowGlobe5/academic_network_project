@@ -83,41 +83,45 @@ def get_papers_per_author_year(data, author, papers_year_list):
 
 
 def compare_frontier(user, seeds, infosphere, is_expand_seed):
-    time = datetime.now()
-    key_to_delete = []
+    #time = datetime.now()
+    key_to_delete = set()
     for t in [PAPER, AUTHOR, TOPIC]:
         # Questi sono i seed trovati all'inizio
         for i, seed in seeds.items():
             # La loro frontiera attuale
+            if seed == [[], [], []]:
+                # Non porta da nessuna parte, non possiamo collegarlo a nulla
+                key_to_delete.add(i)
+                break
             if is_expand_seed:
                 for node in seed[t]:
                     if user[t].get(node):
                         # Add to global infosphere
-                        key_to_delete.append(i)
+                        key_to_delete.add(i)
                         break
             else:
                 for node in user[t]:
                     if infosphere[i][t].get(node):
                         # Add to global infosphere
-                        key_to_delete.append(i)
+                        key_to_delete.add(i)
                         break
     for key in key_to_delete:
         del seeds[key] # Rimuovi tutto il seed
         del infosphere[key]
-    print(f"Compare frontier time: {datetime.now()-time}")
-    return seed[PAPER] or seed[AUTHOR] or seed[TOPIC]
+    #print(f"Compare frontier time: {datetime.now()-time}")
+    return seeds
 
 
 def update_scanned_expand(scanned, frontier, cites_edge_index, writes_edge_index, about_edge_index):
     # for p,frontier in frontier-seeds{
     (temp_paper1, temp_author, temp_topic) = expand_1_hop_graph((cites_edge_index, writes_edge_index, about_edge_index), frontier[PAPER], PAPER, scanned)
     temp_paper2 = expand_1_hop_graph(writes_edge_index, frontier[AUTHOR], AUTHOR, scanned)
-    #temp_paper3 = expand_1_hop_graph(about_edge_index, frontier[TOPIC], TOPIC, scanned)
+    temp_paper3 = expand_1_hop_graph(about_edge_index, frontier[TOPIC], TOPIC, scanned)
     #
     frontier = [[], [], []]
     frontier[PAPER].extend(temp_paper1)
     frontier[PAPER].extend(temp_paper2)
-    #frontier[PAPER].extend(temp_paper3)
+    frontier[PAPER].extend(temp_paper3)
     frontier[AUTHOR].extend(temp_author)
     frontier[TOPIC].extend(temp_topic)
     return frontier
@@ -217,9 +221,10 @@ def get_history_infosphere(data, data_next_year, author_id, papers_next_year):
         scanned_infosphere[('topic', topic)] = [{}, {}, {}]
         scanned_infosphere[('topic', topic)][TOPIC][topic] = []
     
+    total_seed = len(frontier_seeds)
     if compare_frontier(scanned_user, frontier_seeds, scanned_infosphere, True):
         # while (seeds not empty)
-        for i in range(1):            
+        while True:            
             # Expand seed frontier
             frontier_seeds = update_scanned_expand_seeds(scanned_infosphere, frontier_seeds, cites_edge_index, writes_edge_index, about_edge_index)
             if not compare_frontier(scanned_user, frontier_seeds, scanned_infosphere, True): break
@@ -227,6 +232,8 @@ def get_history_infosphere(data, data_next_year, author_id, papers_next_year):
             # append frontier-user to scanned-user    
             frontier_user = update_scanned_expand(scanned_user, frontier_user, cites_edge_index, writes_edge_index, about_edge_index)
             if not compare_frontier(frontier_user, frontier_seeds, scanned_infosphere, False): break
+
+    return len(frontier_seeds)/total_seed
 
 
 def main():
@@ -247,12 +254,18 @@ def main():
 
     tensor_paper_next_year = torch.tensor(papers_next_year).to('cuda:1')
 
-    time = datetime.now()
+    time_total = datetime.now()
+    maxt = 0
+    seed_drop = 0
     for i, author in enumerate(history_author_list):
-        if author == 74662:
-            time = datetime.now()
-            get_history_infosphere(sub_graph, sub_graph_next_year, i, tensor_paper_next_year)
-            print(f"Infosphere creation time: {str(datetime.now() - time)}")
+        #if author == 74662:
+        if i == 1000:
+            break
+        time = datetime.now()
+        seed_drop += get_history_infosphere(sub_graph, sub_graph_next_year, i, tensor_paper_next_year)
+        post_time = str(datetime.now() - time)
+        if post_time > maxt: maxt = post_time
+        # print(f"Infosphere creation time: {str(datetime.now() - time)}")
     print(f"History & Infosphere creation time for a fold: {str(datetime.now() - time)}")
 
 
