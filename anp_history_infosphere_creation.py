@@ -2,16 +2,17 @@ from datetime import datetime
 
 import torch
 import cProfile
-from torch_geometric.utils import k_hop_subgraph
 
 from anp_dataloader import ANPDataLoader
 from anp_dataset import ANPDataset
 
-from enum import Enum
 
 PAPER = 0
 AUTHOR = 1
 TOPIC = 2
+
+MAX_ITERATION = 1
+DEVICE = 'cuda:1'
 
 
 
@@ -102,9 +103,7 @@ def compare_frontier(frontier_user, scanned_user, frontier_seeds, scanned_infosp
             else:
                 for node in frontier_user[t]:
                     if scanned_infosphere[i][t].get(node) and i not in key_to_delete:
-                        print(scanned_infosphere[i][t].get(node))
-                        print(scanned_user[t].get(node)[::-1])
-                        infosphere_found.append(scanned_infosphere[i][t].get(node).extend(scanned_user[t].get(node)[::-1]))
+                        infosphere_found.append(scanned_infosphere[i][t].get(node) + scanned_user[t].get(node)[::-1])
                         key_to_delete.append(i)
                         break
     for key in key_to_delete:
@@ -158,14 +157,13 @@ def get_history_infosphere(data, data_next_year, author_id, papers_next_year):
     ## History
     sub_edge_index = expand_1_hop_edge_index(writes_edge_index, author_id, flow='target_to_source')
     author_papers = sub_edge_index[1].tolist()
-    history_dict = {('author', 'writes', 'paper'): sub_edge_index,
-                ('paper', 'cites', 'paper'): torch.tensor([]).to(torch.int64).to('cuda:1'),
-                ('paper', 'about', 'topic'): torch.tensor([]).to(torch.int64).to('cuda:1')}
+    # 0 cites, 1 writes, 2 topic
+    history_list = [torch.tensor([]).to(torch.int64).to(DEVICE), sub_edge_index, torch.tensor([]).to(torch.int64).to(DEVICE)]
 
     for paper in author_papers:
         # cited papers
         sub_edge_index = expand_1_hop_edge_index(cites_edge_index, paper, flow='target_to_source')
-        history_dict['paper', 'cites', 'paper'] = torch.cat((history_dict['paper', 'cites', 'paper'], sub_edge_index), dim=1)
+        history_list[0] = torch.cat((history_list[0], sub_edge_index), dim=1)
         for cited_paper in sub_edge_index[1].tolist():
             if not scanned_user[PAPER].get(cited_paper):
                 frontier_user[PAPER].append(cited_paper)
@@ -174,7 +172,7 @@ def get_history_infosphere(data, data_next_year, author_id, papers_next_year):
         # co-authors
         sub_edge_index = expand_1_hop_edge_index(writes_edge_index, paper, flow='source_to_target')
         mask = sub_edge_index[0] != author_id
-        history_dict['author', 'writes', 'paper'] = torch.cat((history_dict['author', 'writes', 'paper'], sub_edge_index[:, mask]), dim=1)
+        history_list[1] = torch.cat((history_list[1], sub_edge_index[:, mask]), dim=1)
         for co_author in sub_edge_index[:, mask][0].tolist():
             if not scanned_user[AUTHOR].get(co_author):
                 frontier_user[AUTHOR].append(co_author)
@@ -182,7 +180,7 @@ def get_history_infosphere(data, data_next_year, author_id, papers_next_year):
 
         # topic
         sub_edge_index = expand_1_hop_edge_index(about_edge_index, paper, flow='target_to_source')
-        history_dict['paper', 'about', 'topic'] = torch.cat((history_dict['paper', 'about', 'topic'], sub_edge_index), dim=1)
+        history_list[2] = torch.cat((history_list[2], sub_edge_index), dim=1)
         for topic in sub_edge_index[1].tolist():
             if not scanned_user[TOPIC].get(topic):
                 frontier_user[TOPIC].append(topic)
@@ -227,16 +225,23 @@ def get_history_infosphere(data, data_next_year, author_id, papers_next_year):
     
     if compare_frontier(frontier_user, scanned_user, frontier_seeds, scanned_infosphere, infosphere_found, True):
         # while (seeds not empty)
-        while True:            
+        for _ in range(MAX_ITERATION):            
             # Expand seed frontier
             frontier_seeds = update_scanned_expand_seeds(scanned_infosphere, frontier_seeds, cites_edge_index, writes_edge_index, about_edge_index)
             if not compare_frontier(frontier_user, scanned_user, frontier_seeds, scanned_infosphere, infosphere_found, True): break
 
             # append frontier-user to scanned-user    
-            frontier_user = update_scanned_expand(scanned_user, frontier_user, cites_edge_index, writes_edge_index, about_edge_index)
-            if not compare_frontier(frontier_user, scanned_user, frontier_seeds, scanned_infosphere, infosphere_found, False): break
+            # frontier_user = update_scanned_expand(scanned_user, frontier_user, cites_edge_index, writes_edge_index, about_edge_index)
+            # if not compare_frontier(frontier_user, scanned_user, frontier_seeds, scanned_infosphere, infosphere_found, False): break
 
-    return history_dict, infosphere_found
+    return history_list, infosphere_found
+
+def create_mask_edge_index(edge_index, specified_edges):
+    mask = torch.zeros_like(edge_index[0], dtype=torch.bool)
+    for i in range(specified_edges.size(1)):
+        edge = specified_edges[:, i]
+        mask |= ((edge_index[0] == edge[0]) & (edge_index[1] == edge[1]))
+    return mask
 
 def main():
     fold = 3
@@ -245,32 +250,51 @@ def main():
     root = "ANP_DATA"
 
     dataset = ANPDataset(root=root)
-    dataset[0].to('cuda:1')
+    dataset[0].to(DEVICE)
     dataloader = ANPDataLoader(dataset, root=root, fold=fold, max_year=max_year, keep_edges=keep_edges)
 
     dataiter = iter(dataloader)
     sub_graph, sub_graph_next_year, history_author_list, papers_next_year = next(dataiter)
 
-    sub_graph.to('cuda:1')
-    sub_graph_next_year.to('cuda:1')
+    sub_graph.to(DEVICE)
+    sub_graph_next_year.to(DEVICE)
 
-    tensor_paper_next_year = torch.tensor(papers_next_year).to('cuda:1')
+    tensor_paper_next_year = torch.tensor(papers_next_year).to(DEVICE)
 
     infosphere_file = open(f"infosphere_{fold}_{max_year}.json", "w", encoding="utf-8")
-    history = []
+    history_edge_list = []
     infosphere = []
     for i, author in enumerate(history_author_list):
-        if author == 153860:
+         if author == 153860:
             time = datetime.now()
             author_history, author_infosphere= get_history_infosphere(sub_graph, sub_graph_next_year, i, tensor_paper_next_year)
-            history.append(author_history)
+            history_edge_list.append(author_history)
             infosphere.append(author_infosphere)
 
             print(f"Infosphere creation time: {str(datetime.now() - time)}")
     #print(f"History & Infosphere creation time for a fold: {str(datetime.now() - time)}")
-    torch.save(history, f"history_{fold}_{max_year}.pt")
+    torch.save(history_edge_list, f"history_{fold}_{max_year}.pt")
     infosphere_file.write(f"{infosphere}")
     infosphere_file.close()
+
+
+    for author_history in history_edge_list:
+        time = datetime.now()
+        mask_cites = create_mask_edge_index(sub_graph['paper', 'cites', 'paper'].edge_index, author_history[0])
+        mask_writes = create_mask_edge_index(sub_graph['author', 'writes', 'paper'].edge_index, author_history[1])
+        mask_about = create_mask_edge_index(sub_graph['paper', 'about', 'topic'].edge_index, author_history[2])
+        print(f"Mask creation time: {str(datetime.now() - time)}")
+
+    infosphere_edge_list = [torch.tensor([]).to(torch.int64).to(DEVICE), torch.tensor([]).to(torch.int64).to(DEVICE), torch.tensor([]).to(torch.int64).to(DEVICE)]
+    for author_infosphere in infosphere:
+        for element in author_infosphere:
+            
+
+
+
+        
+
+
 
 if __name__ == "__main__":
     #cProfile.run('main()')

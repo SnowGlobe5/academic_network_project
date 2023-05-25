@@ -161,3 +161,4 @@ cython_debug/
 *.json
 *.tar.gz
 ANP_DATA/*
+history_3_2020.pt
