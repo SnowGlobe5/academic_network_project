@@ -1,9 +1,9 @@
+import json
+# import cProfile
+import sys
 from datetime import datetime
 
 import torch
-# import cProfile
-import sys
-import json
 
 from anp_dataloader import ANPDataLoader
 from anp_dataset import ANPDataset
@@ -17,7 +17,7 @@ WRITES = 1
 ABOUT = 2
 
 MAX_ITERATION = 1
-DEVICE = 'cuda:1'
+DEVICE = 'cuda:0'
 
 
 def expand_1_hop_edge_index(edge_index, node, flow):
@@ -91,11 +91,8 @@ def compare_frontier(frontier_user, scanned_user, frontier_seeds, scanned_infosp
     # time = datetime.now()
     key_to_delete = []
     for t in [PAPER, AUTHOR, TOPIC]:
-        # Questi sono i seed trovati all'inizio
         for i, seed in frontier_seeds.items():
-            # La loro frontiera attuale
             if seed == [[], [], []] and i not in key_to_delete:
-                # Non porta da nessuna parte, non possiamo collegarlo a nulla
                 key_to_delete.append(i)
                 break
             if is_expand_seed:
@@ -111,7 +108,7 @@ def compare_frontier(frontier_user, scanned_user, frontier_seeds, scanned_infosp
                         key_to_delete.append(i)
                         break
     for key in key_to_delete:
-        del frontier_seeds[key]  # Rimuovi tutto il seed
+        del frontier_seeds[key]
         del scanned_infosphere[key]
     # print(f"Compare frontier time: {datetime.now()-time}")
     return frontier_seeds
@@ -119,8 +116,7 @@ def compare_frontier(frontier_user, scanned_user, frontier_seeds, scanned_infosp
 
 def update_scanned_expand(scanned, frontier, cites_edge_index, writes_edge_index, about_edge_index):
     # for p,frontier in frontier-seeds{
-    (temp_paper1, temp_author, temp_topic) = expand_1_hop_graph((cites_edge_index, writes_edge_index, about_edge_index),
-                                                                frontier[PAPER], PAPER, scanned)
+    (temp_paper1, temp_author, temp_topic) = expand_1_hop_graph((cites_edge_index, writes_edge_index, about_edge_index), frontier[PAPER], PAPER, scanned)
     temp_paper2 = expand_1_hop_graph(writes_edge_index, frontier[AUTHOR], AUTHOR, scanned)
     temp_paper3 = expand_1_hop_graph(about_edge_index, frontier[TOPIC], TOPIC, scanned)
     #
@@ -136,8 +132,7 @@ def update_scanned_expand(scanned, frontier, cites_edge_index, writes_edge_index
 def update_scanned_expand_seeds(scanned, frontier, cites_edge_index, writes_edge_index, about_edge_index):
     new_frontier = {}
     for seed in frontier.keys():
-        new_frontier[seed] = update_scanned_expand(scanned[seed], frontier[seed], cites_edge_index, writes_edge_index,
-                                                   about_edge_index)
+        new_frontier[seed] = update_scanned_expand(scanned[seed], frontier[seed], cites_edge_index, writes_edge_index, about_edge_index)
     return new_frontier
 
 
@@ -237,15 +232,13 @@ def get_history_infosphere(data, data_next_year, author_id, papers_next_year):
         # while (seeds not empty)
         for _ in range(MAX_ITERATION):
             # Expand seed frontier
-            frontier_seeds = update_scanned_expand_seeds(scanned_infosphere, frontier_seeds, cites_edge_index,
-                                                         writes_edge_index, about_edge_index)
-            if not compare_frontier(frontier_user, scanned_user, frontier_seeds, scanned_infosphere, infosphere_found,
-                                    True): break
+            frontier_seeds = update_scanned_expand_seeds(scanned_infosphere, frontier_seeds, cites_edge_index, writes_edge_index, about_edge_index)
+            if not compare_frontier(frontier_user, scanned_user, frontier_seeds, scanned_infosphere, infosphere_found, True): break
 
-            # append frontier-user to scanned-user    
+            # append frontier-user to scanned-user
             # frontier_user = update_scanned_expand(scanned_user, frontier_user, cites_edge_index, writes_edge_index, about_edge_index)
             # if not compare_frontier(frontier_user, scanned_user, frontier_seeds, scanned_infosphere, infosphere_found, False): break
-            
+
     list_missing_seeds = list(frontier_seeds.keys())
     return history_mask, infosphere_found, list_missing_seeds
 
@@ -282,25 +275,25 @@ def main(year, n_fold, keep_relation):
     history_mask = []
     infosphere = []
     missing_seeds = []
-    
+
     for i, author in enumerate(history_author_list):
-        if i == 74662:
+        if i == 153860:
             time = datetime.now()
-            print(sub_graph['author']['id'][i])
-            author_history_mask, author_infosphere, author_missing_seeds = get_history_infosphere(sub_graph, sub_graph_next_year, i,
-                                                                       tensor_paper_next_year)
+            # print(sub_graph['author']['id'][i])
+            author_history_mask, author_infosphere, author_missing_seeds = \
+                get_history_infosphere(sub_graph, sub_graph_next_year, i, tensor_paper_next_year)
             history_mask.append(author_history_mask)
             infosphere.append(author_infosphere)
             missing_seeds.append(author_missing_seeds)
 
-            print(f"Infosphere creation time: {str(datetime.now() - time)}")
-    torch.save(history_mask, f"history_{fold}_{max_year}.pt")
-    
-    infosphere_file = open(f"infosphere_{fold}_{max_year}.json", "w", encoding="utf-8")
+            # print(f"Infosphere creation time: {str(datetime.now() - time)}")
+    torch.save(history_mask, f"output/history_{fold}_{max_year}.pt")
+
+    infosphere_file = open(f"output/infosphere_{fold}_{max_year}.json", "w", encoding="utf-8")
     infosphere_file.write(json.dumps(infosphere))
     infosphere_file.close()
-    
-    missing_seeds_file = open(f"missing_seeds_{fold}_{max_year}.json", "w", encoding="utf-8")
+
+    missing_seeds_file = open(f"output/missing_seeds_{fold}_{max_year}.json", "w", encoding="utf-8")
     missing_seeds_file.write(json.dumps(missing_seeds))
     missing_seeds_file.close()
 
@@ -322,13 +315,14 @@ def main(year, n_fold, keep_relation):
 
     infosphere_mask_list = []
     for author_infosphere in infosphere_edge_list:
-        infosphere_mask = []
-        infosphere_mask.append(create_mask_edge_index(sub_graph['paper', 'cites', 'paper'].edge_index, author_infosphere[CITES]))
-        infosphere_mask.append(create_mask_edge_index(sub_graph['author', 'writes', 'paper'].edge_index, author_infosphere[WRITES]))
-        infosphere_mask.append(create_mask_edge_index(sub_graph['paper', 'about', 'topic'].edge_index, author_infosphere[ABOUT]))
+        infosphere_mask = [
+            create_mask_edge_index(sub_graph['paper', 'cites', 'paper'].edge_index, author_infosphere[CITES]),
+            create_mask_edge_index(sub_graph['author', 'writes', 'paper'].edge_index, author_infosphere[WRITES]),
+            create_mask_edge_index(sub_graph['paper', 'about', 'topic'].edge_index, author_infosphere[ABOUT])]
         infosphere_mask_list.append(infosphere_mask)
-        
-    torch.save(infosphere_mask_list, f"infosphere_{fold}_{max_year}.pt")
+
+    torch.save(infosphere_mask_list, f"output/infosphere_{fold}_{max_year}.pt")
+
 
 if __name__ == "__main__":
     year = int(sys.argv[1])
