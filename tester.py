@@ -4,7 +4,6 @@ import json
 import json
 import networkx as nx
 import matplotlib.pyplot as plt
-from networkx.drawing.nx_pydot import graphviz_layout
 
 from anp_history_infosphere_creation import main as gen
 
@@ -13,7 +12,7 @@ if not os.path.exists("output"):
 
 fold = 3
 year = 2018
-#gen(year, fold, True)
+gen(year, fold, True)
 
 
 def load_csv_mapping(filename):
@@ -70,30 +69,25 @@ for i, author in enumerate(data):
         for edge in sublist:
             if edge[0] == "writes":
                 author_id = author_mapping[edge[1][0]]
-                paper_id = paper_mapping[edge[1][1]].replace(':', ',')
+                paper_id = paper_mapping[edge[1][1]]
                 G.add_edge(author_id, paper_id, label="writes")
             elif edge[0] == "about":
-                paper_id = paper_mapping[edge[1][0]].replace(':', ',')
+                paper_id = paper_mapping[edge[1][0]]
                 topic_id = topic_mapping[edge[1][1]]
                 G.add_edge(paper_id, topic_id, label="about")
             elif edge[0] == "cites":
-                paper1_id = paper_mapping[edge[1][0]].replace(':', ',')
-                paper2_id = paper_mapping[edge[1][1]].replace(':', ',')
+                paper1_id = paper_mapping[edge[1][0]]
+                paper2_id = paper_mapping[edge[1][1]]
                 G.add_edge(paper1_id, paper2_id, label="cites")
 
     # Disegna il grafico
-    plt.figure(figsize=(8, 8))
-    # use graphviz to find radial layout
-    pos = graphviz_layout(G, prog="twopi", root=0)
-    # draw nodes, coloring by rtt ping time
-    nx.draw(G, pos,
-            node_color='lightblue',
-            alpha=0.5,
-            node_size=15)
-    # adjust the plot limits
-    xmax = 1.02 * max(xx for xx, yy in pos.values())
-    ymax = 1.02 * max(yy for xx, yy in pos.values())
-    plt.xlim(0, xmax)
-    plt.ylim(0, ymax)
+    pos = nx.spring_layout(G, k=0.8)
+    edge_labels = nx.get_edge_attributes(G, 'label')
+    nx.draw_networkx_nodes(G, pos, node_color='lightblue', node_size=500)
+    nx.draw_networkx_labels(G, pos, font_size=6)
+    nx.draw_networkx_edges(G, pos)
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=6)
+    plt.axis('off')
+    
     
     plt.savefig(f"dummy_name{i}.png")

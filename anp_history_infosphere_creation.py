@@ -17,7 +17,7 @@ WRITES = 1
 ABOUT = 2
 
 MAX_ITERATION = 1
-DEVICE = 'cuda:0'
+DEVICE = 'cuda:1'
 
 
 def expand_1_hop_edge_index(edge_index, node, flow):
