@@ -296,7 +296,7 @@ def main(year, n_fold, keep_relation):
         missing_seeds.append(author_missing_seeds)
             # print(f"Infosphere creation time: {str(datetime.now() - time)}")
             
-    time = datetime.now()
+    # time = datetime.now()
     history_edge_list = []
     for graph_mask in history_mask:
         author_history_edge_list = [
@@ -344,7 +344,7 @@ def main(year, n_fold, keep_relation):
     #     infosphere_mask_list.append(infosphere_mask)
 
     torch.save(infosphere_edge_list, f"{root}/computed_infosphere/infosphere_{fold}_{max_year}.pt")
-    print(f"Edge index creation time: {str(datetime.now() - time)}")
+    # print(f"Edge index creation time: {str(datetime.now() - time)}")
 
 if __name__ == "__main__":
     year = int(sys.argv[1])
