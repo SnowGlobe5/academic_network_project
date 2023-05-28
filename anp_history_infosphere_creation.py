@@ -306,16 +306,16 @@ def main(year, n_fold, keep_relation):
         history_edge_list.append(author_history_edge_list)
         
     
-    # torch.save(history_edge_list, f"output/history_{fold}_{max_year}.pt")
-    # history_file = open(f"output/history_{fold}_{max_year}.json", "w", encoding="utf-8")
+    # torch.save(history_edge_list, f"{root}/computed_infosphere/history_{fold}_{max_year}.pt")
+    # history_file = open(f"{root}/computed_infosphere/history_{fold}_{max_year}.json", "w", encoding="utf-8")
     # history_file.write(json.dumps(history_edge_list))
     # history_file.close()
 
-    infosphere_file = open(f"output/infosphere_{fold}_{max_year}.json", "w", encoding="utf-8")
+    infosphere_file = open(f"{root}/computed_infosphere/infosphere_{fold}_{max_year}.json", "w", encoding="utf-8")
     infosphere_file.write(json.dumps(infosphere))
     infosphere_file.close()
 
-    missing_seeds_file = open(f"output/missing_seeds_{fold}_{max_year}.json", "w", encoding="utf-8")
+    missing_seeds_file = open(f"{root}/computed_infosphere/missing_seeds_{fold}_{max_year}.json", "w", encoding="utf-8")
     missing_seeds_file.write(json.dumps(missing_seeds))
     missing_seeds_file.close()
 
@@ -343,7 +343,7 @@ def main(year, n_fold, keep_relation):
     #         create_mask_edge_index(sub_graph['paper', 'about', 'topic'].edge_index, author_infosphere[ABOUT])]
     #     infosphere_mask_list.append(infosphere_mask)
 
-    torch.save(infosphere_edge_list, f"output/infosphere_{fold}_{max_year}.pt")
+    torch.save(infosphere_edge_list, f"{root}/computed_infosphere/infosphere_{fold}_{max_year}.pt")
     print(f"Edge index creation time: {str(datetime.now() - time)}")
 
 if __name__ == "__main__":
