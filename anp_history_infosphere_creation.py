@@ -37,11 +37,18 @@ def expand_1_hop_graph(edge_index, nodes, type, paths):
         topic_nodes = []
         for paper in nodes:
             # cited paper
-            sub_edge_index, _ = expand_1_hop_edge_index(edge_index[0], paper, flow='target_to_source')
-            for cited_paper in sub_edge_index[1].tolist():
+            # sub_edge_index, _ = expand_1_hop_edge_index(edge_index[0], paper, flow='target_to_source')
+            # for cited_paper in sub_edge_index[1].tolist():
+            #     if not paths[PAPER].get(cited_paper):
+            #         paper_nodes.append(cited_paper)
+            #         paths[PAPER][cited_paper] = paths[PAPER][paper] + [('cites', [paper, cited_paper])]
+            
+            # Since this is used from seed we are intrested in papers that cites it
+            sub_edge_index, _ = expand_1_hop_edge_index(edge_index[0], paper, flow='source_to_target')
+            for cited_paper in sub_edge_index[0].tolist():
                 if not paths[PAPER].get(cited_paper):
                     paper_nodes.append(cited_paper)
-                    paths[PAPER][cited_paper] = paths[PAPER][paper] + [('cites', [paper, cited_paper])]
+                    paths[PAPER][cited_paper] = paths[PAPER][paper] + [('cites', [cited_paper, paper])]
 
             # co-authors
             sub_edge_index, _ = expand_1_hop_edge_index(edge_index[1], paper, flow='source_to_target')
@@ -277,17 +284,32 @@ def main(year, n_fold, keep_relation):
     missing_seeds = []
 
     for i, author in enumerate(history_author_list):
-        if i == 153860:
-            time = datetime.now()
+        # if i == 100000: break
+        # if author == 74662:
+        # if author % 10000 == 0:
             # print(sub_graph['author']['id'][i])
-            author_history_mask, author_infosphere, author_missing_seeds = \
-                get_history_infosphere(sub_graph, sub_graph_next_year, i, tensor_paper_next_year)
-            history_mask.append(author_history_mask)
-            infosphere.append(author_infosphere)
-            missing_seeds.append(author_missing_seeds)
-
+        #if i == 74662:
+        author_history_mask, author_infosphere, author_missing_seeds = \
+            get_history_infosphere(sub_graph, sub_graph_next_year, i, tensor_paper_next_year)
+        history_mask.append(author_history_mask)
+        infosphere.append(author_infosphere)
+        missing_seeds.append(author_missing_seeds)
             # print(f"Infosphere creation time: {str(datetime.now() - time)}")
-    torch.save(history_mask, f"output/history_{fold}_{max_year}.pt")
+            
+    time = datetime.now()
+    history_edge_list = []
+    for graph_mask in history_mask:
+        author_history_edge_list = [
+            sub_graph['paper', 'cites', 'paper'].edge_index[:, graph_mask[CITES]],
+            sub_graph['author', 'writes', 'paper'].edge_index[:, graph_mask[WRITES]],
+            sub_graph['paper', 'about', 'topic'].edge_index[:, graph_mask[ABOUT]]]
+        history_edge_list.append(author_history_edge_list)
+        
+    
+    # torch.save(history_edge_list, f"output/history_{fold}_{max_year}.pt")
+    # history_file = open(f"output/history_{fold}_{max_year}.json", "w", encoding="utf-8")
+    # history_file.write(json.dumps(history_edge_list))
+    # history_file.close()
 
     infosphere_file = open(f"output/infosphere_{fold}_{max_year}.json", "w", encoding="utf-8")
     infosphere_file.write(json.dumps(infosphere))
@@ -313,16 +335,16 @@ def main(year, n_fold, keep_relation):
                     author_infosphere_edge_list[2] = torch.cat((infosphere_edge_list[ABOUT], element[1]), dim=1)
         infosphere_edge_list.append(author_infosphere_edge_list)
 
-    infosphere_mask_list = []
-    for author_infosphere in infosphere_edge_list:
-        infosphere_mask = [
-            create_mask_edge_index(sub_graph['paper', 'cites', 'paper'].edge_index, author_infosphere[CITES]),
-            create_mask_edge_index(sub_graph['author', 'writes', 'paper'].edge_index, author_infosphere[WRITES]),
-            create_mask_edge_index(sub_graph['paper', 'about', 'topic'].edge_index, author_infosphere[ABOUT])]
-        infosphere_mask_list.append(infosphere_mask)
+    # infosphere_mask_list = []
+    # for author_infosphere in infosphere_edge_list:
+    #     infosphere_mask = [
+    #         create_mask_edge_index(sub_graph['paper', 'cites', 'paper'].edge_index, author_infosphere[CITES]),
+    #         create_mask_edge_index(sub_graph['author', 'writes', 'paper'].edge_index, author_infosphere[WRITES]),
+    #         create_mask_edge_index(sub_graph['paper', 'about', 'topic'].edge_index, author_infosphere[ABOUT])]
+    #     infosphere_mask_list.append(infosphere_mask)
 
-    torch.save(infosphere_mask_list, f"output/infosphere_{fold}_{max_year}.pt")
-
+    torch.save(infosphere_edge_list, f"output/infosphere_{fold}_{max_year}.pt")
+    print(f"Edge index creation time: {str(datetime.now() - time)}")
 
 if __name__ == "__main__":
     year = int(sys.argv[1])
