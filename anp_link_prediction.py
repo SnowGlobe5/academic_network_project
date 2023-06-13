@@ -6,9 +6,11 @@ import torch.nn.functional as F
 from torch.nn import Linear
 
 import torch_geometric.transforms as T
-from anp_dataloader import ANPDataLoader
-from anp_dataset import ANPDataset
+from torch_geometric.datasets import MovieLens
 from torch_geometric.nn import SAGEConv, to_hetero
+from anp_dataset import ANPDataset
+from anp_dataloader import ANPDataLoader
+from anp_utils import generate_coauthor_edge_year
 
 # parser = argparse.ArgumentParser()
 # parser.add_argument('--use_weighted_loss', action='store_true',
@@ -17,30 +19,37 @@ from torch_geometric.nn import SAGEConv, to_hetero
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-#path = osp.join(osp.dirname(osp.realpath(__file__)), '../../data/MovieLens')
-#dataset = MovieLens(path, model_name='all-MiniLM-L6-v2')
+# path = osp.join(osp.dirname(osp.realpath(__file__)), '../../data/MovieLens')
+# dataset = MovieLens(path, model_name='all-MiniLM-L6-v2')
+# data = dataset[0].to(device)
+
 root = "ANP_DATA"
 
 dataset = ANPDataset(root=root)
-data = dataset[0].to(device)
+print(dataset[0])
+dataloader = ANPDataLoader(dataset, root=root, fold=1, max_year=2019, keep_edges=False)
+dataiter = iter(dataloader)
+sub_graph, _, _, _ = next(dataiter)
+data = sub_graph
 
-print(data)
+if not data.get('author', 'co-author', 'author'):
+    generate_coauthor_edge_year(data, 2019)
 
 # Add user node features for message passing:
-data['author'].x = torch.eye(data['author'].num_nodes, device=device)
-del data['author'].num_nodes
+data['user'].x = torch.eye(data['user'].num_nodes, device=device)
+del data['user'].num_nodes
 
+# In our case is already undirected
 # Add a reverse ('movie', 'rev_rates', 'user') relation for message passing:
-data = T.ToUndirected()(data)
-del data['paper', 'rev_writes', 'author'].edge_label  # Remove "reverse" label.
+# data = T.ToUndirected()(data)
+# del data['movie', 'rev_rates', 'user'].edge_label  # Remove "reverse" label.
 
 # Perform a link-level split into training, validation, and test edges:
 train_data, val_data, test_data = T.RandomLinkSplit(
-    num_val=0.1,
-    num_test=0.1,
-    neg_sampling_ratio=0.0,
-    edge_types=[('user', 'rates', 'movie')],
-    rev_edge_types=[('movie', 'rev_rates', 'user')],
+    num_val=0,
+    num_test=0,
+    neg_sampling_ratio=1.0,
+    edge_types=[('author', 'co-author', 'author')],
 )(data)
 
 # We have an unbalanced dataset with many labels for rating 3 and 4, and very
@@ -50,6 +59,7 @@ train_data, val_data, test_data = T.RandomLinkSplit(
 #     weight = weight.max() / weight
 # else:
 #     weight = None
+weight = None
 
 
 def weighted_mse_loss(pred, target, weight=None):
@@ -57,6 +67,8 @@ def weighted_mse_loss(pred, target, weight=None):
     return (weight * (pred - target.to(pred.dtype)).pow(2)).mean()
 
 
+# The encoder (e.g. 2-layer GNN) should operate on the full graph (including all node and edge types we have). 
+# The encoding is a dictionary of node_types and their embedding matrices. We will only use the embedding matrix for the node_type=author. 
 class GNNEncoder(torch.nn.Module):
     def __init__(self, hidden_channels, out_channels):
         super().__init__()
@@ -68,7 +80,7 @@ class GNNEncoder(torch.nn.Module):
         x = self.conv2(x, edge_index)
         return x
 
-
+# We can then pick the embedding pairs for the node-pairs that are in our training set of pairs and feed them batch wise into the decoder (e.g. 2 layer fully connected NN with binary output for co-author/not-co-author).
 class EdgeDecoder(torch.nn.Module):
     def __init__(self, hidden_channels):
         super().__init__()
@@ -77,7 +89,7 @@ class EdgeDecoder(torch.nn.Module):
 
     def forward(self, z_dict, edge_label_index):
         row, col = edge_label_index
-        z = torch.cat([z_dict['author'][row], z_dict['author'][col]], dim=-1)
+        z = torch.cat([z_dict['user'][row], z_dict['movie'][col]], dim=-1)
 
         z = self.lin1(z).relu()
         z = self.lin2(z)

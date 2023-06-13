@@ -1,3 +1,5 @@
+import torch
+
 PAPER = 0
 AUTHOR = 1
 TOPIC = 2
@@ -75,3 +77,22 @@ def expand_1_hop_graph(edge_index, nodes, type, paths):
                     paper_nodes.append(paper)
                     paths[PAPER][paper] = paths[TOPIC][topic] + [('about', [paper, topic])]
         return paper_nodes
+    
+    
+def generate_coauthor_edge_year(data, year):
+    mask = torch.equal(data['paper'][0], year)
+    edge_index = data['author', 'writes', 'paper'].edge_index
+    src = []
+    dst = []
+    dict_tracker = {}
+    for i, bl in enumerate(mask):
+        if bl:
+            sub_edge_index, _ = expand_1_hop_edge_index(edge_index, i, flow='source_to_target')
+            for author in sub_edge_index[0].tolist():
+                for co_author in sub_edge_index[0].tolist():
+                    if author != co_author and not dict_tracker.get((author, co_author)):
+                        dict_tracker[(author, co_author)] = True
+                        src.append(author)
+                        dst.append(co_author)
+    data['author', 'co-author', 'author'].edge_index = torch.tensor([src, dst])
+    data['author', 'co-author', 'author'].edge_label = None
