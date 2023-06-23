@@ -1,4 +1,5 @@
 import torch
+import pandas as pd
 
 PAPER = 0
 AUTHOR = 1
@@ -79,12 +80,39 @@ def expand_1_hop_graph(edge_index, nodes, type, paths):
         return paper_nodes
     
     
+def anp_filter_data(data, root, fold, max_year, keep_edges):
+        subset_dict = {}
+        subset_dict_next_year = {}
+        if fold != -1:
+            df_auth = pd.read_csv(f"{root}/split/authors_{fold}.csv")
+            authors_filter_list = df_auth.values.flatten()
+            if not keep_edges:
+                subset_dict['author'] = subset_dict_next_year['author'] = torch.tensor(authors_filter_list)
+        else:
+            df_auth = pd.read_csv(f"{root}/mapping/authors.csv", index_col='id')
+            authors_filter_list = df_auth.index
+        papers_list_next_year = []
+        papers_list_year = []
+        for i, row in enumerate(data['paper'].x.tolist()):
+            if row[0] <= max_year:
+                papers_list_year.append(i)
+            elif row[0] == max_year + 1:
+                papers_list_next_year.append(i)
+        subset_dict['paper'] = torch.tensor(papers_list_year)
+        papers_list_year.extend(papers_list_next_year)
+        subset_dict_next_year['paper'] = torch.tensor(papers_list_year)
+        return data.subgraph(subset_dict), data.subgraph(subset_dict_next_year), sorted(authors_filter_list.tolist()), papers_list_next_year
+    
+
 def generate_coauthor_edge_year(data, year):
-    mask = torch.equal(data['paper'][0], year)
+    years = data['paper'].x[:, 0]
+    print(len(years))
+    mask = years == year
     edge_index = data['author', 'writes', 'paper'].edge_index
     src = []
     dst = []
     dict_tracker = {}
+    print(mask)
     for i, bl in enumerate(mask):
         if bl:
             sub_edge_index, _ = expand_1_hop_edge_index(edge_index, i, flow='source_to_target')

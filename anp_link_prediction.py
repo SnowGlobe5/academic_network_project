@@ -4,61 +4,48 @@ import os.path as osp
 import torch
 import torch.nn.functional as F
 from torch.nn import Linear
+from tqdm import tqdm
 
+from torch_geometric.loader import HGTLoader
 import torch_geometric.transforms as T
 from torch_geometric.datasets import MovieLens
 from torch_geometric.nn import SAGEConv, to_hetero
 from anp_dataset import ANPDataset
 from anp_dataloader import ANPDataLoader
-from anp_utils import generate_coauthor_edge_year
+from anp_utils import generate_coauthor_edge_year, anp_filter_data
 
-# parser = argparse.ArgumentParser()
-# parser.add_argument('--use_weighted_loss', action='store_true',
-#                     help='Whether to use weighted MSE loss.')
-# args = parser.parse_args()
+BATCH_SIZE = 4096
+YEAR_TRAIN = 2019
+YEAR_VAL = 2020
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-# path = osp.join(osp.dirname(osp.realpath(__file__)), '../../data/MovieLens')
-# dataset = MovieLens(path, model_name='all-MiniLM-L6-v2')
-# data = dataset[0].to(device)
 
 root = "ANP_DATA"
 
 dataset = ANPDataset(root=root)
-print(dataset[0])
-dataloader = ANPDataLoader(dataset, root=root, fold=1, max_year=2019, keep_edges=False)
-dataiter = iter(dataloader)
-sub_graph, _, _, _ = next(dataiter)
-data = sub_graph
 
-if not data.get('author', 'co-author', 'author'):
-    generate_coauthor_edge_year(data, 2019)
+## Train
+sub_graph_train, _, _, _ = anp_filter_data(dataset[0], root=root, fold=-1, max_year=YEAR_TRAIN, keep_edges=False)
+sub_graph_train.to(device)
+train_input_nodes = ('authors', torch.ones(sub_graph_train['author'].num_nodes, dtype=torch.bool))
+sub_graph_train = T.ToUndirected(merge=True)(sub_graph_train)
 
-# Add user node features for message passing:
-data['user'].x = torch.eye(data['user'].num_nodes, device=device)
-del data['user'].num_nodes
+## Validation
+sub_graph_val, _, _, _ = anp_filter_data(dataset[0], root=root, fold=1, max_year=YEAR_VAL, keep_edges=False)
+sub_graph_val.to(device)
+val_input_nodes = ('authors', torch.ones(sub_graph_val['author'].num_nodes, dtype=torch.bool))
+sub_graph_val = T.ToUndirected(merge=True)(sub_graph_val)
 
-# In our case is already undirected
-# Add a reverse ('movie', 'rev_rates', 'user') relation for message passing:
-# data = T.ToUndirected()(data)
-# del data['movie', 'rev_rates', 'user'].edge_label  # Remove "reverse" label.
+data = sub_graph_train
 
-# Perform a link-level split into training, validation, and test edges:
-train_data, val_data, test_data = T.RandomLinkSplit(
-    num_val=0,
-    num_test=0,
-    neg_sampling_ratio=1.0,
-    edge_types=[('author', 'co-author', 'author')],
-)(data)
+kwargs = {'batch_size': 128, 'num_workers': 6, 'persistent_workers': True}
 
-# We have an unbalanced dataset with many labels for rating 3 and 4, and very
-# few for 0 and 1. Therefore we use a weighted MSE loss.
-# if args.use_weighted_loss:
-#     weight = torch.bincount(train_data['user', 'movie'].edge_label)
-#     weight = weight.max() / weight
-# else:
-#     weight = None
+train_loader = HGTLoader(sub_graph_train, num_samples=[4096] * 4, shuffle=True,
+                            input_nodes=train_input_nodes, batch_size=BATCH_SIZE)
+val_loader = HGTLoader(sub_graph_train, num_samples=[4096] * 4, shuffle=True,
+                            input_nodes=train_input_nodes, batch_size=BATCH_SIZE)
+
+
 weight = None
 
 
@@ -89,7 +76,7 @@ class EdgeDecoder(torch.nn.Module):
 
     def forward(self, z_dict, edge_label_index):
         row, col = edge_label_index
-        z = torch.cat([z_dict['user'][row], z_dict['movie'][col]], dim=-1)
+        z = torch.cat([z_dict['author'][row], z_dict['author'][col]], dim=-1)
 
         z = self.lin1(z).relu()
         z = self.lin2(z)
@@ -112,33 +99,86 @@ model = Model(hidden_channels=32).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
 
-def train():
-    model.train()
-    optimizer.zero_grad()
-    pred = model(train_data.x_dict, train_data.edge_index_dict,
-                 train_data['user', 'movie'].edge_label_index)
-    target = train_data['user', 'movie'].edge_label
-    loss = weighted_mse_loss(pred, target, weight)
-    loss.backward()
-    optimizer.step()
-    return float(loss)
-
 
 @torch.no_grad()
-def test(data):
+def init_params():
+    # Initialize lazy parameters via forwarding a single batch to the model:
+    batch = next(iter(train_loader))
+    batch = batch.to(device, 'edge_index')
+    model(batch.x_dict, batch.edge_index_dict)
+
+
+def train():
+    model.train()
+
+    total_examples = total_loss = 0
+    for batch in tqdm(train_loader):
+        generate_coauthor_edge_year(batch, YEAR_TRAIN)
+        # print(sampled_hetero_data['author', 'co-author', 'author'])
+        # print(sampled_hetero_data)
+
+        # Add user node features for message passing:
+        batch['author'].x = torch.eye(batch['author'].num_nodes, device=device)
+        del batch['author'].num_nodes
+        # print(sampled_hetero_data)
+
+        # Perform a link-level split into training, validation, and test edges:
+        train_data, _, _ = T.RandomLinkSplit(
+            num_val=0,
+            num_test=0,
+            neg_sampling_ratio=1.0,
+            edge_types=[('author', 'co-author', 'author')],
+        )(batch)
+
+        optimizer.zero_grad()
+        pred = model(train_data.x_dict, train_data.edge_index_dict,
+                    train_data['author', 'author'].edge_label_index)
+        target = train_data['author', 'author'].edge_label
+        loss = weighted_mse_loss(pred, target, weight)
+        loss.backward()
+        optimizer.step()
+        total_examples += BATCH_SIZE
+        total_loss += float(loss) * BATCH_SIZE
+
+    return total_loss / total_examples
+     
+     
+@torch.no_grad()
+def test(loader):
     model.eval()
-    pred = model(data.x_dict, data.edge_index_dict,
-                 data['user', 'movie'].edge_label_index)
-    pred = pred.clamp(min=0, max=5)
-    target = data['user', 'movie'].edge_label.float()
-    rmse = F.mse_loss(pred, target).sqrt()
-    return float(rmse)
+
+    total_examples = total_correct = 0
+    for batch in tqdm(loader):
+        generate_coauthor_edge_year(batch, YEAR_TRAIN)
+
+        # Add user node features for message passing:
+        batch['author'].x = torch.eye(batch['author'].num_nodes, device=device)
+        del batch['author'].num_nodes
+
+        # Perform a link-level split into training, validation, and test edges:
+        data, _, _ = T.RandomLinkSplit(
+            num_val=0,
+            num_test=0,
+            neg_sampling_ratio=1.0,
+            edge_types=[('author', 'co-author', 'author')],
+        )(batch)
+        
+        pred = model(data.x_dict, data.edge_index_dict,
+                    data['author', 'author'].edge_label_index)
+        #pred = pred.clamp(min=0, max=5)
+        target = data['author', 'author'].edge_label.boolean()
+        rmse = F.mse_loss(pred, target).sqrt()
+        total_examples += BATCH_SIZE
+        total_correct += int(rmse).sum()
+
+    return total_correct / total_examples
 
 
-for epoch in range(1, 301):
+init_params()  # Initialize parameters.
+optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+for epoch in range(1, 2):
     loss = train()
-    train_rmse = test(train_data)
-    val_rmse = test(val_data)
-    test_rmse = test(test_data)
-    print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}, Train: {train_rmse:.4f}, '
-          f'Val: {val_rmse:.4f}, Test: {test_rmse:.4f}')
+    exit()
+    val_acc = test(val_loader)
+    print(f'Epoch: {epoch:02d}, Loss: {loss:.4f}, Val: {val_acc:.4f}')
