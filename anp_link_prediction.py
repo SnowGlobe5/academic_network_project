@@ -27,23 +27,23 @@ dataset = ANPDataset(root=root)
 ## Train
 sub_graph_train, _, _, _ = anp_filter_data(dataset[0], root=root, fold=-1, max_year=YEAR_TRAIN, keep_edges=False)
 sub_graph_train.to(device)
-train_input_nodes = ('authors', torch.ones(sub_graph_train['author'].num_nodes, dtype=torch.bool))
+train_input_nodes = ('author', torch.ones(sub_graph_train['author'].num_nodes, dtype=torch.bool))
 sub_graph_train = T.ToUndirected(merge=True)(sub_graph_train)
 
 ## Validation
 sub_graph_val, _, _, _ = anp_filter_data(dataset[0], root=root, fold=1, max_year=YEAR_VAL, keep_edges=False)
 sub_graph_val.to(device)
-val_input_nodes = ('authors', torch.ones(sub_graph_val['author'].num_nodes, dtype=torch.bool))
+val_input_nodes = ('author', torch.ones(sub_graph_val['author'].num_nodes, dtype=torch.bool))
 sub_graph_val = T.ToUndirected(merge=True)(sub_graph_val)
 
 data = sub_graph_train
 
-kwargs = {'batch_size': 128, 'num_workers': 6, 'persistent_workers': True}
+# kwargs = {'batch_size': 128, 'num_workers': 6, 'persistent_workers': True}
 
 train_loader = HGTLoader(sub_graph_train, num_samples=[4096] * 4, shuffle=True,
                             input_nodes=train_input_nodes, batch_size=BATCH_SIZE)
-val_loader = HGTLoader(sub_graph_train, num_samples=[4096] * 4, shuffle=True,
-                            input_nodes=train_input_nodes, batch_size=BATCH_SIZE)
+val_loader = HGTLoader(sub_graph_val, num_samples=[4096] * 4, shuffle=True,
+                            input_nodes=val_input_nodes, batch_size=BATCH_SIZE)
 
 
 weight = None
