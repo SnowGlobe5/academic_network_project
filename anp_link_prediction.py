@@ -18,25 +18,26 @@ BATCH_SIZE = 4096
 YEAR_TRAIN = 2019
 YEAR_VAL = 2020
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 root = "ANP_DATA"
 
 dataset = ANPDataset(root=root)
+data = dataset[0]
+data['paper'].x = data['paper'].x.to(torch.float)
 
 ## Train
-sub_graph_train, _, _, _ = anp_filter_data(dataset[0], root=root, fold=-1, max_year=YEAR_TRAIN, keep_edges=False)
+sub_graph_train, _, _, _ = anp_filter_data(data, root=root, fold=-1, max_year=YEAR_TRAIN, keep_edges=False)
 sub_graph_train.to(device)
 train_input_nodes = ('author', torch.ones(sub_graph_train['author'].num_nodes, dtype=torch.bool))
 sub_graph_train = T.ToUndirected(merge=True)(sub_graph_train)
 
 ## Validation
-sub_graph_val, _, _, _ = anp_filter_data(dataset[0], root=root, fold=1, max_year=YEAR_VAL, keep_edges=False)
+sub_graph_val, _, _, _ = anp_filter_data(data, root=root, fold=1, max_year=YEAR_VAL, keep_edges=False)
 sub_graph_val.to(device)
 val_input_nodes = ('author', torch.ones(sub_graph_val['author'].num_nodes, dtype=torch.bool))
 sub_graph_val = T.ToUndirected(merge=True)(sub_graph_val)
 
-data = sub_graph_train
 
 # kwargs = {'batch_size': 128, 'num_workers': 6, 'persistent_workers': True}
 
@@ -45,6 +46,8 @@ train_loader = HGTLoader(sub_graph_train, num_samples=[4096] * 4, shuffle=True,
 val_loader = HGTLoader(sub_graph_val, num_samples=[4096] * 4, shuffle=True,
                             input_nodes=val_input_nodes, batch_size=BATCH_SIZE)
 
+data = next(iter(train_loader))
+generate_coauthor_edge_year(data, YEAR_TRAIN)
 
 weight = None
 
@@ -104,8 +107,18 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 def init_params():
     # Initialize lazy parameters via forwarding a single batch to the model:
     batch = next(iter(train_loader))
-    batch = batch.to(device, 'edge_index')
-    model(batch.x_dict, batch.edge_index_dict)
+    generate_coauthor_edge_year(batch, YEAR_TRAIN)
+    batch['author'].x = torch.eye(batch['author'].num_nodes, device=device)
+    del batch['author'].num_nodes
+    
+    init_data, _, _ = T.RandomLinkSplit(
+        num_val=0,
+        num_test=0,
+        neg_sampling_ratio=1.0,
+        edge_types=[('author', 'co_author', 'author')],
+    )(batch)
+
+    model(init_data.x_dict, init_data.edge_index_dict, init_data['author', 'author'].edge_label_index)
 
 
 def train():
@@ -114,7 +127,7 @@ def train():
     total_examples = total_loss = 0
     for batch in tqdm(train_loader):
         generate_coauthor_edge_year(batch, YEAR_TRAIN)
-        # print(sampled_hetero_data['author', 'co-author', 'author'])
+        # print(sampled_hetero_data['author', 'co_author', 'author'])
         # print(sampled_hetero_data)
 
         # Add user node features for message passing:
@@ -127,7 +140,7 @@ def train():
             num_val=0,
             num_test=0,
             neg_sampling_ratio=1.0,
-            edge_types=[('author', 'co-author', 'author')],
+            edge_types=[('author', 'co_author', 'author')],
         )(batch)
 
         optimizer.zero_grad()
@@ -160,7 +173,7 @@ def test(loader):
             num_val=0,
             num_test=0,
             neg_sampling_ratio=1.0,
-            edge_types=[('author', 'co-author', 'author')],
+            edge_types=[('author', 'co_author', 'author')],
         )(batch)
         
         pred = model(data.x_dict, data.edge_index_dict,
@@ -174,7 +187,7 @@ def test(loader):
     return total_correct / total_examples
 
 
-init_params()  # Initialize parameters.
+# init_params()  # Initialize parameters.
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
 for epoch in range(1, 2):
