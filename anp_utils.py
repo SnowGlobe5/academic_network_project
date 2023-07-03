@@ -106,13 +106,11 @@ def anp_filter_data(data, root, fold, max_year, keep_edges):
 
 def generate_coauthor_edge_year(data, year):
     years = data['paper'].x[:, 0]
-    print(len(years))
     mask = years == year
     edge_index = data['author', 'writes', 'paper'].edge_index
     src = []
     dst = []
     dict_tracker = {}
-    print(mask)
     for i, bl in enumerate(mask):
         if bl:
             sub_edge_index, _ = expand_1_hop_edge_index(edge_index, i, flow='source_to_target')
@@ -122,5 +120,5 @@ def generate_coauthor_edge_year(data, year):
                         dict_tracker[(author, co_author)] = True
                         src.append(author)
                         dst.append(co_author)
-    data['author', 'co-author', 'author'].edge_index = torch.tensor([src, dst])
-    data['author', 'co-author', 'author'].edge_label = None
+    data['author', 'co_author', 'author'].edge_index = torch.tensor([src, dst])
+    data['author', 'co_author', 'author'].edge_label = None

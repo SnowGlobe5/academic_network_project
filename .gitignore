@@ -163,3 +163,4 @@ cython_debug/
 ANP_DATA/*
 *.pt
 .vscode/
+data/*
