@@ -134,6 +134,9 @@ def train():
         batch['author'].x = torch.eye(batch['author'].num_nodes, device=device)
         del batch['author'].num_nodes
         # print(sampled_hetero_data)
+        batch.to(device)
+        del batch['paper', 'rev_writes', 'author']
+        del batch['topic', 'rev_about', 'paper']
 
         # Perform a link-level split into training, validation, and test edges:
         train_data, _, _ = T.RandomLinkSplit(
@@ -142,7 +145,7 @@ def train():
             neg_sampling_ratio=1.0,
             edge_types=[('author', 'co_author', 'author')],
         )(batch)
-
+        
         optimizer.zero_grad()
         pred = model(train_data.x_dict, train_data.edge_index_dict,
                     train_data['author', 'author'].edge_label_index)
@@ -168,6 +171,10 @@ def test(loader):
         batch['author'].x = torch.eye(batch['author'].num_nodes, device=device)
         del batch['author'].num_nodes
 
+        batch.to(device)
+        del batch['paper', 'rev_writes', 'author']
+        del batch['topic', 'rev_about', 'paper']
+        
         # Perform a link-level split into training, validation, and test edges:
         data, _, _ = T.RandomLinkSplit(
             num_val=0,
@@ -187,11 +194,10 @@ def test(loader):
     return total_correct / total_examples
 
 
-# init_params()  # Initialize parameters.
+#init_params()  # Initialize parameters.
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
 for epoch in range(1, 2):
     loss = train()
-    exit()
     val_acc = test(val_loader)
     print(f'Epoch: {epoch:02d}, Loss: {loss:.4f}, Val: {val_acc:.4f}')
