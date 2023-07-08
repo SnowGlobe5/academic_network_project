@@ -30,7 +30,7 @@ data['paper'].x = data['paper'].x.to(torch.float)
 sub_graph_mini, _, _, _ = anp_filter_data(data, root=root, fold=-1, max_year=YEAR_TRAIN, keep_edges=False)
 sub_graph_mini.to(device)
 mini_input_nodes = ('author', torch.ones(sub_graph_mini['author'].num_nodes, dtype=torch.bool))
-sub_graph_mini = T.ToUndirected(merge=True)(sub_graph_mini)
+sub_graph_mini = T.ToUndirected()(sub_graph_mini)
 
 # kwargs = {'batch_size': 128, 'num_workers': 6, 'persistent_workers': True}
 
@@ -129,7 +129,7 @@ def test(data):
     return float(rmse)
 
 
-for epoch in range(1, 301):
+for epoch in range(1, 151):
     loss = train()
     train_rmse = test(train_data)
     val_rmse = test(val_data)

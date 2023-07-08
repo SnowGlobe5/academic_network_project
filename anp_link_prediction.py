@@ -26,28 +26,30 @@ dataset = ANPDataset(root=root)
 data = dataset[0]
 data['paper'].x = data['paper'].x.to(torch.float)
 
+sub_graph_train, sub_graph_val, _, _ = anp_filter_data(data, root=root, fold=-1, max_year=YEAR_TRAIN, keep_edges=False)
+
 ## Train
-sub_graph_train, _, _, _ = anp_filter_data(data, root=root, fold=-1, max_year=YEAR_TRAIN, keep_edges=False)
 sub_graph_train.to(device)
+sub_graph_train = T.ToUndirected()(sub_graph_train)
 train_input_nodes = ('author', torch.ones(sub_graph_train['author'].num_nodes, dtype=torch.bool))
-sub_graph_train = T.ToUndirected(merge=True)(sub_graph_train)
 
 ## Validation
-sub_graph_val, _, _, _ = anp_filter_data(data, root=root, fold=1, max_year=YEAR_VAL, keep_edges=False)
 sub_graph_val.to(device)
+sub_graph_val = T.ToUndirected()(sub_graph_val)
 val_input_nodes = ('author', torch.ones(sub_graph_val['author'].num_nodes, dtype=torch.bool))
-sub_graph_val = T.ToUndirected(merge=True)(sub_graph_val)
 
 
-# kwargs = {'batch_size': 128, 'num_workers': 6, 'persistent_workers': True}
+kwargs = {'batch_size': BATCH_SIZE, 'num_workers': 20, 'persistent_workers': True}
 
 train_loader = HGTLoader(sub_graph_train, num_samples=[4096] * 4, shuffle=True,
-                            input_nodes=train_input_nodes, batch_size=BATCH_SIZE)
+                            input_nodes=train_input_nodes, **kwargs)
 val_loader = HGTLoader(sub_graph_val, num_samples=[4096] * 4, shuffle=True,
-                            input_nodes=val_input_nodes, batch_size=BATCH_SIZE)
+                            input_nodes=val_input_nodes, **kwargs)
 
 data = next(iter(train_loader))
 generate_coauthor_edge_year(data, YEAR_TRAIN)
+del data['paper', 'rev_writes', 'author']
+del data['topic', 'rev_about', 'paper']
 
 weight = None
 
@@ -123,20 +125,17 @@ def init_params():
 
 def train():
     model.train()
-
     total_examples = total_loss = 0
-    for batch in tqdm(train_loader):
+    for i, batch in enumerate(tqdm(train_loader)):
+        if i == 200: break
         generate_coauthor_edge_year(batch, YEAR_TRAIN)
-        # print(sampled_hetero_data['author', 'co_author', 'author'])
-        # print(sampled_hetero_data)
 
         # Add user node features for message passing:
         batch['author'].x = torch.eye(batch['author'].num_nodes, device=device)
         del batch['author'].num_nodes
-        # print(sampled_hetero_data)
-        batch.to(device)
         del batch['paper', 'rev_writes', 'author']
         del batch['topic', 'rev_about', 'paper']
+        batch.to(device)
 
         # Perform a link-level split into training, validation, and test edges:
         train_data, _, _ = T.RandomLinkSplit(
@@ -153,8 +152,8 @@ def train():
         loss = weighted_mse_loss(pred, target, weight)
         loss.backward()
         optimizer.step()
-        total_examples += BATCH_SIZE
-        total_loss += float(loss) * BATCH_SIZE
+        total_examples += len(pred)
+        total_loss += float(loss) * len(pred)
 
     return total_loss / total_examples
      
@@ -163,8 +162,9 @@ def train():
 def test(loader):
     model.eval()
 
-    total_examples = total_correct = 0
-    for batch in tqdm(loader):
+    total_examples = total_mse = total_correct = 0
+    for i, batch in enumerate(tqdm(loader)):
+        if i == 200: break
         generate_coauthor_edge_year(batch, YEAR_TRAIN)
 
         # Add user node features for message passing:
@@ -176,28 +176,29 @@ def test(loader):
         del batch['topic', 'rev_about', 'paper']
         
         # Perform a link-level split into training, validation, and test edges:
-        data, _, _ = T.RandomLinkSplit(
+        val_data, _, _ = T.RandomLinkSplit(
             num_val=0,
             num_test=0,
             neg_sampling_ratio=1.0,
             edge_types=[('author', 'co_author', 'author')],
         )(batch)
         
-        pred = model(data.x_dict, data.edge_index_dict,
-                    data['author', 'author'].edge_label_index)
-        #pred = pred.clamp(min=0, max=5)
-        target = data['author', 'author'].edge_label.boolean()
+        pred = model(val_data.x_dict, val_data.edge_index_dict,
+                 val_data['author', 'author'].edge_label_index)
+        pred = pred.clamp(min=0, max=1)
+        target = val_data['author', 'author'].edge_label.float()
         rmse = F.mse_loss(pred, target).sqrt()
-        total_examples += BATCH_SIZE
-        total_correct += int(rmse).sum()
+        total_mse += rmse
+        total_examples += len(pred)
+        total_correct += int((torch.round(pred, decimals=0) == target).sum())
 
-    return total_correct / total_examples
+    return total_mse / BATCH_SIZE, total_correct/total_examples
 
 
 #init_params()  # Initialize parameters.
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
-for epoch in range(1, 2):
+for epoch in range(1, 11):
     loss = train()
-    val_acc = test(val_loader)
-    print(f'Epoch: {epoch:02d}, Loss: {loss:.4f}, Val: {val_acc:.4f}')
+    val_mse, val_acc = test(val_loader)
+    print(f'Epoch: {epoch:02d}, Loss: {loss:.4f}, RMSE: {val_mse:.4f}, Accuracy: {val_acc:.4f}')
