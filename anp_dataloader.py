@@ -9,7 +9,7 @@ from torch_geometric.data.data import BaseData
 from torch_geometric.data.datapipes import DatasetAdapter
 
 
-class ANPDataLoader(torch.utils.data.DataLoader):
+class ANPDataLoaderLegacy(torch.utils.data.DataLoader):
     def __init__(self, dataset: Union[Dataset, Sequence[BaseData], DatasetAdapter],
                  batch_size: int = 1,
                  shuffle: bool = False,

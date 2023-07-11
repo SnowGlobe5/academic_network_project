@@ -1,5 +1,6 @@
 import os
 import tarfile
+import sys
 import urllib
 
 import pandas as pd
@@ -73,15 +74,16 @@ class ANPDataset(InMemoryDataset):
     def download(self):
         if not os.path.exists(f"{self.root}/mapping"):
             if not os.path.exists(f"dblp_v14.json"):
-                print("Start download...")
-                urllib.request.urlretrieve("https://originalfileserver.aminer.cn/misc/dblp_v14.tar.gz",
-                                           "dblp_v14.tar.gz")
-                print("Download completed!")
+                # print("Start download...")
+                # urllib.request.urlretrieve("https://originalfileserver.aminer.cn/misc/dblp_v14.tar.gz",
+                #                            "dblp_v14.tar.gz")
+                # print("Download completed!")
 
-                with tarfile.open("dblp_v14.tar.gz", 'r:gz') as tar:
-                    tar.extractall()
+                # with tarfile.open("dblp_v14.tar.gz", 'r:gz') as tar:
+                #     tar.extractall()
+                sys.exit("Download & extract https://originalfileserver.aminer.cn/misc/dblp_v14.tar.gz")
 
-            print("Start parsing...")
+            print("Start parsing... (It will take some time)")
             extract_dataset(self.root)
             print("Parsing completed!")
 

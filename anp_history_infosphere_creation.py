@@ -1,11 +1,9 @@
 import json
 # import cProfile
 import sys
-from datetime import datetime
 
 import torch
 
-from anp_dataloader import ANPDataLoader
 from anp_dataset import ANPDataset
 from anp_utils import *
 
@@ -192,7 +190,7 @@ def main(year, n_fold, keep_relation):
 
     dataset = ANPDataset(root=root)
     dataset[0].to(DEVICE)
-    dataloader = ANPDataLoader(dataset, root=root, fold=fold, max_year=max_year, keep_edges=keep_edges)
+    dataloader = anp_filter_data(dataset, root=root, fold=fold, max_year=max_year, keep_edges=keep_edges)
 
     dataiter = iter(dataloader)
     sub_graph, sub_graph_next_year, history_author_list, papers_next_year = next(dataiter)
