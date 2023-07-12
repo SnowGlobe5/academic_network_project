@@ -4,11 +4,8 @@ import os.path as osp
 import torch
 import torch.nn.functional as F
 from torch.nn import Linear
-from tqdm import tqdm
 
-from torch_geometric.loader import HGTLoader
 import torch_geometric.transforms as T
-from torch_geometric.datasets import MovieLens
 from torch_geometric.nn import SAGEConv, to_hetero
 from anp_dataset import ANPDataset
 from anp_utils import generate_coauthor_edge_year, anp_filter_data
