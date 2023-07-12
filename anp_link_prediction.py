@@ -1,4 +1,5 @@
 import torch
+import os
 import torch.nn.functional as F
 import torch_geometric.transforms as T
 from anp_dataset import ANPDataset
@@ -20,6 +21,16 @@ root = "ANP_DATA"
 # Create ANP dataset
 dataset = ANPDataset(root=root)
 data = dataset[0]
+
+if os.path.exists(f"{root}/processed/co_author_edge{YEAR_TRAIN}.pt"):
+    print("Co-author edge found!")
+    data['author', 'co_author', 'author'].edge_index = torch.load(f"{root}/processed/co_author_edge{YEAR_TRAIN}.pt")
+    data['author', 'co_author', 'author'].edge_label = None
+else:
+    print("Generating co-author edge...")
+    generate_coauthor_edge_year(data, YEAR_TRAIN)
+    torch.save(data['author', 'co_author', 'author'].edge_index, f"{root}/processed/co_author_edge{YEAR_TRAIN}.pt")
+    
 data['paper'].x = data['paper'].x.to(torch.float)
 
 # Train
@@ -45,11 +56,6 @@ train_loader = HGTLoader(sub_graph_train, num_samples=[4096] * 4, shuffle=True,
 val_loader = HGTLoader(sub_graph_val, num_samples=[4096] * 4, shuffle=True,
                             input_nodes=val_input_nodes, **kwargs)
 
-# Get data from train_loader (just for metadata)
-data = next(iter(train_loader))
-generate_coauthor_edge_year(data, YEAR_TRAIN)
-del data['paper', 'rev_writes', 'author']
-del data['topic', 'rev_about', 'paper']
 
 # Initialize weight
 weight = None
@@ -110,8 +116,7 @@ def train():
     for i, batch in enumerate(tqdm(train_loader)):
         if i == 200:
             break
-        generate_coauthor_edge_year(batch, YEAR_TRAIN)
-
+        
         # Add user node features for message passing:
         batch['author'].x = torch.eye(batch['author'].num_nodes, device=device)
         del batch['author'].num_nodes
@@ -149,7 +154,6 @@ def test(loader):
     for i, batch in enumerate(tqdm(loader)):
         if i == 200:
             break
-        generate_coauthor_edge_year(batch, YEAR_TRAIN)
 
         # Add user node features for message passing:
         batch['author'].x = torch.eye(batch['author'].num_nodes, device=device)

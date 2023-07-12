@@ -1,4 +1,5 @@
 import torch
+from datetime import datetime
 import pandas as pd
 
 PAPER = 0
@@ -107,18 +108,23 @@ def anp_filter_data(data, root, fold, max_year, keep_edges):
 def generate_coauthor_edge_year(data, year):
     years = data['paper'].x[:, 0]
     mask = years == year
+    papers = torch.where(mask)[0]
     edge_index = data['author', 'writes', 'paper'].edge_index
+    edge_index = edge_index.to(DEVICE)
     src = []
     dst = []
     dict_tracker = {}
-    for i, bl in enumerate(mask):
-        if bl:
-            sub_edge_index, _ = expand_1_hop_edge_index(edge_index, i, flow='source_to_target')
-            for author in sub_edge_index[0].tolist():
-                for co_author in sub_edge_index[0].tolist():
-                    if author != co_author and not dict_tracker.get((author, co_author)):
-                        dict_tracker[(author, co_author)] = True
-                        src.append(author)
-                        dst.append(co_author)
+    time = datetime.now()
+    tot = len(papers)
+    for i, paper in enumerate(papers):
+        if i % 10000 == 0:
+            print(f"papers processed: {i}/{tot} - {i/tot*100}% - {str(datetime.now() - time)}")
+        sub_edge_index, _ = expand_1_hop_edge_index(edge_index, paper, flow='source_to_target')
+        for author in sub_edge_index[0].tolist():
+            for co_author in sub_edge_index[0].tolist():
+                if author != co_author and not dict_tracker.get((author, co_author)):
+                    dict_tracker[(author, co_author)] = True
+                    src.append(author)
+                    dst.append(co_author)
     data['author', 'co_author', 'author'].edge_index = torch.tensor([src, dst])
     data['author', 'co_author', 'author'].edge_label = None
