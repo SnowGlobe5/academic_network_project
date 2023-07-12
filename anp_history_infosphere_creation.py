@@ -189,14 +189,14 @@ def main(year, n_fold, keep_relation):
     root = "ANP_DATA"
 
     dataset = ANPDataset(root=root)
-    dataset[0].to(DEVICE)
+    dataset[0] = dataset[0].to(DEVICE)
     dataloader = anp_filter_data(dataset, root=root, fold=fold, max_year=max_year, keep_edges=keep_edges)
 
     dataiter = iter(dataloader)
     sub_graph, sub_graph_next_year, history_author_list, papers_next_year = next(dataiter)
 
-    sub_graph.to(DEVICE)
-    sub_graph_next_year.to(DEVICE)
+    sub_graph = sub_graph.to(DEVICE)
+    sub_graph_next_year = sub_graph_next_year.to(DEVICE)
 
     tensor_paper_next_year = torch.tensor(papers_next_year).to(DEVICE)
 

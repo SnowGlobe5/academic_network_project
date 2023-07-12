@@ -35,26 +35,24 @@ data['paper'].x = data['paper'].x.to(torch.float)
 
 # Train
 # Filter training data
-sub_graph_train, _, _, _ = anp_filter_data(data, root=root, fold=1, max_year=YEAR_TRAIN, keep_edges=False)
-sub_graph_train.to(device)
+sub_graph_train, _, _, _ = anp_filter_data(data, root=root, fold=1, max_year=YEAR_TRAIN, keep_edges=False)    
+sub_graph_train = sub_graph_train.to(device)
 sub_graph_train = T.ToUndirected()(sub_graph_train)
-train_input_nodes = ('author', torch.ones(sub_graph_train['author'].num_nodes, dtype=torch.bool))
 
 # Validation
 # Filter validation data
 sub_graph_val, _, _, _ = anp_filter_data(data, root=root, fold=2, max_year=YEAR_TRAIN, keep_edges=False)
-sub_graph_val.to(device)
+sub_graph_val = sub_graph_val.to(device)
 sub_graph_val = T.ToUndirected()(sub_graph_val)
-val_input_nodes = ('author', torch.ones(sub_graph_val['author'].num_nodes, dtype=torch.bool))
 
 # Set loader parameters
-kwargs = {'batch_size': BATCH_SIZE, 'num_workers': 2, 'persistent_workers': True}
+#kwargs = {'batch_size': BATCH_SIZE, 'num_workers': 2, 'persistent_workers': True}
 
 # Create train and validation loaders
 train_loader = HGTLoader(sub_graph_train, num_samples=[4096] * 4, shuffle=True,
-                            input_nodes=train_input_nodes, **kwargs)
+                            batch_size=4086, input_nodes='author')
 val_loader = HGTLoader(sub_graph_val, num_samples=[4096] * 4, shuffle=True,
-                            input_nodes=val_input_nodes, **kwargs)
+                            batch_size=4086, input_nodes='author')
 
 
 # Initialize weight
@@ -122,7 +120,7 @@ def train():
         del batch['author'].num_nodes
         del batch['paper', 'rev_writes', 'author']
         del batch['topic', 'rev_about', 'paper']
-        batch.to(device)
+        batch = batch.to(device)
         print(batch)
 
         # Add 0/1 features to co_author edge:
@@ -159,7 +157,7 @@ def test(loader):
         batch['author'].x = torch.eye(batch['author'].num_nodes, device=device)
         del batch['author'].num_nodes
 
-        batch.to(device)
+        batch = batch.to(device)
         del batch['paper', 'rev_writes', 'author']
         del batch['topic', 'rev_about', 'paper']
 
