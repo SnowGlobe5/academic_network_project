@@ -30,7 +30,7 @@ else:
     print("Generating co-author edge...")
     generate_coauthor_edge_year(data, YEAR_TRAIN)
     torch.save(data['author', 'co_author', 'author'].edge_index, f"{root}/processed/co_author_edge{YEAR_TRAIN}.pt")
-    
+
 data['paper'].x = data['paper'].x.to(torch.float)
 
 # Train
@@ -46,7 +46,7 @@ sub_graph_val = sub_graph_val.to(device)
 sub_graph_val = T.ToUndirected()(sub_graph_val)
 
 # Set loader parameters
-#kwargs = {'batch_size': BATCH_SIZE, 'num_workers': 2, 'persistent_workers': True}
+# kwargs = {'batch_size': BATCH_SIZE, 'num_workers': 2, 'persistent_workers': True}
 
 # Create train and validation loaders
 train_loader = HGTLoader(sub_graph_train, num_samples=[4096] * 4, shuffle=True,
@@ -106,6 +106,7 @@ class Model(torch.nn.Module):
 # Create model, optimizer, and move model to device
 model = Model(hidden_channels=32).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+embedding = torch.nn.Embedding(data["author"].num_nodes, 32)
 
 
 def train():
@@ -116,12 +117,12 @@ def train():
             break
         
         # Add user node features for message passing:
-        batch['author'].x = torch.eye(batch['author'].num_nodes, device=device)
-        del batch['author'].num_nodes
+        # batch['author'].x = torch.eye(batch['author'].num_nodes, device=device)
+        batch['author'].x = embedding(batch['author'].n_id)
+
         del batch['paper', 'rev_writes', 'author']
         del batch['topic', 'rev_about', 'paper']
         batch = batch.to(device)
-        print(batch)
 
         # Add 0/1 features to co_author edge:
         train_data, _, _ = T.RandomLinkSplit(
@@ -154,8 +155,7 @@ def test(loader):
             break
 
         # Add user node features for message passing:
-        batch['author'].x = torch.eye(batch['author'].num_nodes, device=device)
-        del batch['author'].num_nodes
+        batch['author'].x = embedding(batch['author'].n_id)
 
         batch = batch.to(device)
         del batch['paper', 'rev_writes', 'author']
