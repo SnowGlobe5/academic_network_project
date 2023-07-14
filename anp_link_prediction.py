@@ -3,7 +3,7 @@ import os
 import torch.nn.functional as F
 import torch_geometric.transforms as T
 from anp_dataset import ANPDataset
-from anp_utils import generate_coauthor_edge_year, anp_filter_data
+from anp_utils import *
 from torch.nn import Linear
 from torch_geometric.loader import HGTLoader
 from torch_geometric.nn import SAGEConv, to_hetero
@@ -17,6 +17,7 @@ YEAR_VAL = 2020
 device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 ROOT = "ANP_DATA"
+PATH = "ANP_MODELS/1_co_author_prediction/"
 
 # Create ANP dataset
 dataset = ANPDataset(root=ROOT)
@@ -46,13 +47,13 @@ sub_graph_val = sub_graph_val.to(device)
 sub_graph_val = T.ToUndirected()(sub_graph_val)
 
 # Set loader parameters
-# kwargs = {'batch_size': BATCH_SIZE, 'num_workers': 2, 'persistent_workers': True}
+kwargs = {'batch_size': BATCH_SIZE, 'num_workers': 6, 'persistent_workers': True}
 
 # Create train and validation loaders
 train_loader = HGTLoader(sub_graph_train, num_samples=[4096] * 4, shuffle=True,
-                            batch_size=4086, input_nodes='author')
+                            input_nodes='author', **kwargs)
 val_loader = HGTLoader(sub_graph_val, num_samples=[4096] * 4, shuffle=True,
-                            batch_size=4086, input_nodes='author')
+                            input_nodes='author', **kwargs)
 
 
 # Initialize weight
@@ -108,14 +109,19 @@ model = Model(hidden_channels=32).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 embedding = torch.nn.Embedding(data["author"].num_nodes, 32)
 
+if os.path.exists(PATH):
+    first_epoch = anp_load(model, PATH) + 1
+else:
+    os.makedirs(PATH)
+    with open(PATH + 'info.json', 'w') as json_file:
+        json.dump([], json_file)
+    first_epoch = 1
+    
 
 def train():
     model.train()
     total_examples = total_loss = 0
     for i, batch in enumerate(tqdm(train_loader)):
-        if i == 200:
-            break
-        
         # Add user node features for message passing:
         # batch['author'].x = torch.eye(batch['author'].num_nodes, device=device)
         batch['author'].x = embedding(batch['author'].n_id)
@@ -151,9 +157,6 @@ def test(loader):
 
     total_examples = total_mse = total_correct = 0
     for i, batch in enumerate(tqdm(loader)):
-        if i == 200:
-            break
-
         # Add user node features for message passing:
         batch['author'].x = embedding(batch['author'].n_id)
 
@@ -184,12 +187,15 @@ def test(loader):
 # Initialize optimizer
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
-for epoch in range(1, 11):
+for epoch in range(first_epoch, 51):
     # Train the model
     loss = train()
 
     # Test the model
     val_mse, val_acc = test(val_loader)
 
+    anp_save(model, PATH, epoch, loss, val_mse.item(), val_acc)
+    
     # Print epoch results
     print(f'Epoch: {epoch:02d}, Loss: {loss:.4f}, RMSE: {val_mse:.4f}, Accuracy: {val_acc:.4f}')
+    

@@ -1,4 +1,5 @@
 import torch
+import json
 from datetime import datetime
 import pandas as pd
 
@@ -129,3 +130,25 @@ def generate_coauthor_edge_year(data, year):
                     dst.append(co_author)
     data['author', 'co_author', 'author'].edge_index = torch.tensor([src, dst])
     data['author', 'co_author', 'author'].edge_label = None
+    
+def anp_save(model, path, epoch, loss, mse, accuracy):
+    torch.save(model.state_dict(), path + 'model.pth')
+    new = {
+        'epoch': epoch,
+        'loss': loss,
+        'mse': mse,
+        'accuracy': accuracy
+    }
+    with open(path + 'info.json', 'r') as json_file:
+        data = json.load(json_file)
+    data.append(new)
+    with open(path + 'info.json', 'w') as json_file:
+        json.dump(data, json_file)
+        
+def anp_load(model, path):
+    model.load_state_dict(torch.load(path + 'model.pth'))
+    torch.save(model.state_dict(), path + 'model.pth')
+    with open(path + 'info.json', 'r') as json_file:
+        data = json.load(json_file)
+    return data[-1]["epoch"]
+    
