@@ -23,7 +23,7 @@ data = dataset[0]
 data['paper'].x = data['paper'].x.to(torch.float)
 
 ## Train
-sub_graph_mini, _, _, _ = anp_filter_data(data, root=root, fold=-1, max_year=YEAR_TRAIN, keep_edges=False)
+sub_graph_mini, _, _, _ = anp_filter_data(data, root=root, folds=[0, 1, 2, 3, 4], max_year=YEAR_TRAIN, keep_edges=False)
 sub_graph_mini.to(device)
 mini_input_nodes = ('author', torch.ones(sub_graph_mini['author'].num_nodes, dtype=torch.bool))
 sub_graph_mini = T.ToUndirected()(sub_graph_mini)

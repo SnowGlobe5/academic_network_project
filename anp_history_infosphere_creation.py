@@ -190,7 +190,7 @@ def main(year, n_fold, keep_relation):
 
     dataset = ANPDataset(root=root)
     data = dataset[0]
-    sub_graph, sub_graph_next_year, history_author_list, papers_next_year = anp_filter_data(data, root=root, fold=fold, max_year=max_year, keep_edges=keep_edges)
+    sub_graph, sub_graph_next_year, history_author_list, papers_next_year = anp_filter_data(data, root=root, folds=[fold], max_year=max_year, keep_edges=keep_edges)
 
     sub_graph = sub_graph.to(DEVICE)
     sub_graph_next_year = sub_graph_next_year.to(DEVICE)
