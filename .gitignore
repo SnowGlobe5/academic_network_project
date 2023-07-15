@@ -165,4 +165,4 @@ ANP_MODELS/*
 *.pt
 .vscode/
 data/*
-log.txt
+log*.txt
