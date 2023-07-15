@@ -10,8 +10,7 @@ from torch_geometric.nn import SAGEConv, to_hetero
 from tqdm import tqdm
 
 BATCH_SIZE = 4096
-YEAR_TRAIN = 2019
-YEAR_VAL = 2020
+YEAR = 2019
 
 # Check if CUDA is available, else use CPU
 device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
@@ -23,26 +22,26 @@ PATH = "ANP_MODELS/1_co_author_prediction/"
 dataset = ANPDataset(root=ROOT)
 data = dataset[0]
 
-if os.path.exists(f"{ROOT}/processed/co_author_edge{YEAR_TRAIN}.pt"):
+if os.path.exists(f"{ROOT}/processed/co_author_edge{YEAR}.pt"):
     print("Co-author edge found!")
-    data['author', 'co_author', 'author'].edge_index = torch.load(f"{ROOT}/processed/co_author_edge{YEAR_TRAIN}.pt")
+    data['author', 'co_author', 'author'].edge_index = torch.load(f"{ROOT}/processed/co_author_edge{YEAR}.pt")
     data['author', 'co_author', 'author'].edge_label = None
 else:
     print("Generating co-author edge...")
-    generate_coauthor_edge_year(data, YEAR_TRAIN)
-    torch.save(data['author', 'co_author', 'author'].edge_index, f"{ROOT}/processed/co_author_edge{YEAR_TRAIN}.pt")
+    generate_coauthor_edge_year(data, YEAR)
+    torch.save(data['author', 'co_author', 'author'].edge_index, f"{ROOT}/processed/co_author_edge{YEAR}.pt")
 
 data['paper'].x = data['paper'].x.to(torch.float)
 
 # Train
 # Filter training data
-sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3 ], max_year=YEAR_TRAIN, keep_edges=False)    
+sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3 ], max_year=YEAR, keep_edges=False)    
 sub_graph_train = sub_graph_train.to(device)
 sub_graph_train = T.ToUndirected()(sub_graph_train)
 
 # Validation
 # Filter validation data
-sub_graph_val, _, _, _ = anp_filter_data(data, root=ROOT, folds=[4], max_year=YEAR_TRAIN, keep_edges=False)
+sub_graph_val, _, _, _ = anp_filter_data(data, root=ROOT, folds=[4], max_year=YEAR, keep_edges=False)
 sub_graph_val = sub_graph_val.to(device)
 sub_graph_val = T.ToUndirected()(sub_graph_val)
 
@@ -50,11 +49,8 @@ sub_graph_val = T.ToUndirected()(sub_graph_val)
 kwargs = {'batch_size': BATCH_SIZE, 'num_workers': 6, 'persistent_workers': True}
 
 # Create train and validation loaders
-train_loader = HGTLoader(sub_graph_train, num_samples=[4096] * 4, shuffle=True,
-                            input_nodes='author', **kwargs)
-val_loader = HGTLoader(sub_graph_val, num_samples=[4096] * 4, shuffle=True,
-                            input_nodes='author', **kwargs)
-
+train_loader = HGTLoader(sub_graph_train, num_samples=[4096] * 4, shuffle=True, input_nodes='author', **kwargs)
+val_loader = HGTLoader(sub_graph_val, num_samples=[4096] * 4, shuffle=True, input_nodes='author', **kwargs)
 
 # Initialize weight
 weight = None
@@ -106,7 +102,8 @@ class Model(torch.nn.Module):
 
 # Create model, optimizer, and move model to device
 if os.path.exists(PATH):
-    model, first_epoch = anp_load(PATH) + 1
+    model, first_epoch = anp_load(PATH)
+    first_epoch += 1
 else:
     model = Model(hidden_channels=32).to(device)
     os.makedirs(PATH)
@@ -116,14 +113,12 @@ else:
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 embedding = torch.nn.Embedding(data["author"].num_nodes, 32)
 
-    
 
 def train():
     model.train()
     total_examples = total_loss = 0
     for i, batch in enumerate(tqdm(train_loader)):
         # Add user node features for message passing:
-        # batch['author'].x = torch.eye(batch['author'].num_nodes, device=device)
         batch['author'].x = embedding(batch['author'].n_id)
 
         del batch['paper', 'rev_writes', 'author']
@@ -154,7 +149,6 @@ def train():
 @torch.no_grad()
 def test(loader):
     model.eval()
-
     total_examples = total_mse = total_correct = 0
     for i, batch in enumerate(tqdm(loader)):
         # Add user node features for message passing:
@@ -164,7 +158,7 @@ def test(loader):
         del batch['paper', 'rev_writes', 'author']
         del batch['topic', 'rev_about', 'paper']
 
-        # # Add 0/1 features to co_author edge:
+        # Add 0/1 label to co_author edge:
         val_data, _, _ = T.RandomLinkSplit(
             num_val=0,
             num_test=0,
@@ -194,6 +188,7 @@ for epoch in range(first_epoch, 31):
     # Test the model
     val_mse, val_acc = test(val_loader)
 
+    # Save the model
     anp_save(model, PATH, epoch, loss, val_mse.item(), val_acc)
     
     # Print epoch results
