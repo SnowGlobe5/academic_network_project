@@ -145,7 +145,7 @@ def anp_save(model, path, epoch, loss, mse, accuracy):
     with open(path + 'info.json', 'w') as json_file:
         json.dump(data, json_file)
         
-def anp_load(model, path):
+def anp_load(path):
     with open(path + 'info.json', 'r') as json_file:
         data = json.load(json_file)
     return torch.load(path + 'model.pt'), data[-1]["epoch"]

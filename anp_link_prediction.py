@@ -105,17 +105,17 @@ class Model(torch.nn.Module):
 
 
 # Create model, optimizer, and move model to device
-model = Model(hidden_channels=32).to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-embedding = torch.nn.Embedding(data["author"].num_nodes, 32)
-
 if os.path.exists(PATH):
-    model, first_epoch = anp_load(model, PATH) + 1
+    model, first_epoch = anp_load(PATH) + 1
 else:
+    model = Model(hidden_channels=32).to(device)
     os.makedirs(PATH)
     with open(PATH + 'info.json', 'w') as json_file:
         json.dump([], json_file)
     first_epoch = 1
+optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+embedding = torch.nn.Embedding(data["author"].num_nodes, 32)
+
     
 
 def train():
