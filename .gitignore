@@ -161,7 +161,6 @@ cython_debug/
 *.json
 *.tar.gz
 ANP_DATA/*
-ANP_MODELS/*
 *.pt
 .vscode/
 data/*
