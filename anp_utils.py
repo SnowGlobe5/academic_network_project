@@ -132,7 +132,7 @@ def generate_coauthor_edge_year(data, year):
     data['author', 'co_author', 'author'].edge_label = None
     
 def anp_save(model, path, epoch, loss, mse, accuracy):
-    torch.save(model.state_dict(), path + 'model.pth')
+    torch.save(model, path + 'model.pth')
     new = {
         'epoch': epoch,
         'loss': loss,
@@ -146,9 +146,7 @@ def anp_save(model, path, epoch, loss, mse, accuracy):
         json.dump(data, json_file)
         
 def anp_load(model, path):
-    model.load_state_dict(torch.load(path + 'model.pth'))
-    torch.save(model.state_dict(), path + 'model.pth')
     with open(path + 'info.json', 'r') as json_file:
         data = json.load(json_file)
-    return data[-1]["epoch"]
+    return torch.load(path + 'model.pt'), data[-1]["epoch"]
     

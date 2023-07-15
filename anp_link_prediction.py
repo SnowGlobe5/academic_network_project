@@ -110,7 +110,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 embedding = torch.nn.Embedding(data["author"].num_nodes, 32)
 
 if os.path.exists(PATH):
-    first_epoch = anp_load(model, PATH) + 1
+    model, first_epoch = anp_load(model, PATH) + 1
 else:
     os.makedirs(PATH)
     with open(PATH + 'info.json', 'w') as json_file:
@@ -187,7 +187,7 @@ def test(loader):
 # Initialize optimizer
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
-for epoch in range(first_epoch, 51):
+for epoch in range(first_epoch, 31):
     # Train the model
     loss = train()
 
