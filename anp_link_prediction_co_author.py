@@ -120,6 +120,8 @@ def train():
     for i, batch in enumerate(tqdm(train_loader)):
         # Add user node features for message passing:
         batch['author'].x = embedding(batch['author'].n_id)
+        del batch['paper', 'rev_writes', 'author']
+        del batch['topic', 'rev_about', 'paper']
         batch = batch.to(device)
 
         # Add 0/1 features to co_author edge:
@@ -150,6 +152,8 @@ def test(loader):
     for i, batch in enumerate(tqdm(loader)):
         # Add user node features for message passing:
         batch['author'].x = embedding(batch['author'].n_id)
+        del batch['paper', 'rev_writes', 'author']
+        del batch['topic', 'rev_about', 'paper']
         batch = batch.to(device)
 
         # Add 0/1 label to co_author edge:
