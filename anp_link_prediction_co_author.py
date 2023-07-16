@@ -28,7 +28,7 @@ if os.path.exists(f"{ROOT}/processed/co_author_edge{YEAR}.pt"):
     data['author', 'co_author', 'author'].edge_label = None
 else:
     print("Generating co-author edge...")
-    generate_coauthor_edge_year(data, YEAR)
+    generate_co_author_edge_year(data, YEAR)
     torch.save(data['author', 'co_author', 'author'].edge_index, f"{ROOT}/processed/co_author_edge{YEAR}.pt")
 
 data['paper'].x = data['paper'].x.to(torch.float)
@@ -120,9 +120,6 @@ def train():
     for i, batch in enumerate(tqdm(train_loader)):
         # Add user node features for message passing:
         batch['author'].x = embedding(batch['author'].n_id)
-
-        del batch['paper', 'rev_writes', 'author']
-        del batch['topic', 'rev_about', 'paper']
         batch = batch.to(device)
 
         # Add 0/1 features to co_author edge:
@@ -153,10 +150,7 @@ def test(loader):
     for i, batch in enumerate(tqdm(loader)):
         # Add user node features for message passing:
         batch['author'].x = embedding(batch['author'].n_id)
-
         batch = batch.to(device)
-        del batch['paper', 'rev_writes', 'author']
-        del batch['topic', 'rev_about', 'paper']
 
         # Add 0/1 label to co_author edge:
         val_data, _, _ = T.RandomLinkSplit(

@@ -107,7 +107,7 @@ def anp_filter_data(data, root, folds, max_year, keep_edges):
         return data.subgraph(subset_dict), data.subgraph(subset_dict_next_year), sorted(authors_filter_list), papers_list_next_year
     
 
-def generate_coauthor_edge_year(data, year):
+def generate_co_author_edge_year(data, year):
     years = data['paper'].x[:, 0]
     mask = years == year
     papers = torch.where(mask)[0]
