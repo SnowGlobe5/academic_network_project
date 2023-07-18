@@ -71,7 +71,6 @@ val_loader = NeighborLoader(
 )
 
 del data['author', 'co_author', 'author']
-del data['topic', 'rev_about', 'paper']
 
 # Initialize weight
 weight = None
@@ -156,11 +155,10 @@ def train():
         except:
             continue
         del batch['author', 'co_author', 'author']
-        del batch['topic', 'rev_about', 'paper']
         
         # Add user node features for message passing:
         batch['author'].x = embedding_author(batch['author'].n_id)
-        #batch['topic'].x = embedding_topic(batch['topic'].n_id)
+        batch['topic'].x = embedding_topic(batch['topic'].n_id)
 
         optimizer.zero_grad()
         pred = model(batch.x_dict, batch.edge_index_dict,
@@ -193,11 +191,10 @@ def test(loader):
         except:
             continue
         del batch['author', 'co_author', 'author']
-        del batch['topic', 'rev_about', 'paper']
         
         # Add user node features for message passing:
         batch['author'].x = embedding_author(batch['author'].n_id)
-        #batch['topic'].x = embedding_topic(batch['topic'].n_id)
+        batch['topic'].x = embedding_topic(batch['topic'].n_id)
 
         pred = model(batch.x_dict, batch.edge_index_dict,
                      val_data['author', 'author'].edge_label_index)
@@ -214,7 +211,7 @@ def test(loader):
 # Initialize optimizer
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
-for epoch in range(first_epoch, 101):
+for epoch in range(first_epoch, 13):
     # Train the model
     loss = train()
 
