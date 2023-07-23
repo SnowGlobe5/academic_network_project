@@ -18,8 +18,8 @@ device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 ROOT = "ANP_DATA"
 PATH = "ANP_MODELS/1_co_author_prediction/"
 
-import shutil
-shutil.rmtree(PATH)
+# import shutil
+# shutil.rmtree(PATH)
 
 # Create ANP dataset
 dataset = ANPDataset(root=ROOT)
@@ -209,9 +209,9 @@ def test(loader):
 
 
 # Initialize optimizer
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-for epoch in range(first_epoch, 13):
+for epoch in range(first_epoch, 101):
     # Train the model
     loss = train()
 
