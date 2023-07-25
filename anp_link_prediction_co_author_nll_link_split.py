@@ -5,7 +5,7 @@ import torch_geometric.transforms as T
 from anp_dataset import ANPDataset
 from anp_utils import *
 from torch.nn import Linear
-from torch_geometric.loader import NeighborLoader
+from torch_geometric.loader import LinkNeighborLoader
 from torch_geometric.nn import SAGEConv, to_hetero
 from tqdm import tqdm
 
@@ -39,37 +39,38 @@ else:
 data['paper'].x = data['paper'].x.to(torch.float)
 data = T.ToUndirected()(data)
 
-# Train
-# Filter training data
-sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3 ], max_year=YEAR, keep_edges=False)    
-sub_graph_train = sub_graph_train.to(device)
-
-# Validation
-# Filter validation data
-sub_graph_val, _, _, _ = anp_filter_data(data, root=ROOT, folds=[4], max_year=YEAR, keep_edges=False)
-sub_graph_val = sub_graph_val.to(device)
-
-# Set loader parameters
-#kwargs = {'batch_size': BATCH_SIZE, 'num_workers': 6, 'persistent_workers': True}
-
-# Create train and validation loaders
-# train_loader = HGTLoader(sub_graph_train, num_samples=[4096] * 4, shuffle=True, input_nodes='author', **kwargs)
-# val_loader = HGTLoader(sub_graph_val, num_samples=[4096] * 4, shuffle=True, input_nodes='author', **kwargs)
-train_loader = NeighborLoader(
-    sub_graph_train,
-    # Sample 30 neighbors for each node and edge type for 2 iterations
-    num_neighbors={key: [4096] * 2 for key in sub_graph_train.edge_types},
-    # Use a batch size of 128 for sampling training nodes of type paper
-    batch_size=4096,
-    input_nodes='author',
+transform = T.RandomLinkSplit(
+    num_val=0.1,
+    num_test=0,
+    disjoint_train_ratio=0.3,
+    neg_sampling_ratio=2.0,
+    add_negative_train_samples=False,
+    edge_types=('author', 'co_author', 'author')
 )
-val_loader = NeighborLoader(
-    sub_graph_val,
-    # Sample 30 neighbors for each node and edge type for 2 iterations
-    num_neighbors={key: [4096] * 2 for key in sub_graph_val.edge_types},
-    # Use a batch size of 128 for sampling training nodes of type paper
-    batch_size=4096,
-    input_nodes='author',
+train_data, val_data, _= transform(data)
+
+# Define seed edges:
+edge_label_index = train_data['author', 'co_author', 'author'].edge_label_index
+edge_label = train_data['author', 'co_author', 'author'].edge_label
+train_loader = LinkNeighborLoader(
+    data=train_data,
+    num_neighbors=[20, 10],
+    neg_sampling_ratio=2.0,
+    edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
+    edge_label=edge_label,
+    batch_size=256,
+    shuffle=True,
+)
+
+edge_label_index = val_data['author', 'co_author', 'author'].edge_label_index
+edge_label = val_data['author', 'co_author', 'author'].edge_label
+val_loader = LinkNeighborLoader(
+    data=val_data,
+    num_neighbors=[20, 10],
+    edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
+    edge_label=edge_label,
+    batch_size=3 * 256,
+    shuffle=False,
 )
 
 # Delete the co-author edge (data will be used for data.metadata())
@@ -152,17 +153,8 @@ def train():
     for i, batch in enumerate(tqdm(train_loader)):
         batch = batch.to(device)
         
-        try:
-            # Add 0/1 features to co_author edge:
-            train_data, _, _ = T.RandomLinkSplit(
-                num_val=0,
-                num_test=0,
-                neg_sampling_ratio=1.0,
-                edge_types=[('author', 'co_author', 'author')],
-            )(batch)
-        except:
-            # if the batch has no co-author edge (so no edge with label 1), skip it
-            continue
+        edge_label_index = batch['author', 'author'].edge_label_index
+        edge_label = batch['author', 'author'].edge_label
         del batch['author', 'co_author', 'author']
         
         # Add user node features for message passing:
@@ -170,9 +162,8 @@ def train():
         batch['topic'].x = embedding_topic(batch['topic'].n_id)
 
         optimizer.zero_grad()
-        pred = model(batch.x_dict, batch.edge_index_dict,
-                    train_data['author', 'author'].edge_label_index)
-        target = train_data['author', 'author'].edge_label
+        pred = model(batch.x_dict, batch.edge_index_dict, edge_label_index)
+        target = edge_label
         loss = weighted_mse_loss(pred, target, weight)
         loss.backward()
         optimizer.step()
@@ -189,26 +180,17 @@ def test(loader):
     for i, batch in enumerate(tqdm(loader)):
         batch = batch.to(device)
         
-        try:
-            # Add 0/1 label to co_author edge:
-            val_data, _, _ = T.RandomLinkSplit(
-                num_val=0,
-                num_test=0,
-                neg_sampling_ratio=1.0,
-                edge_types=[('author', 'co_author', 'author')],
-            )(batch)
-        except:
-            continue
+        edge_label_index = batch['author', 'author'].edge_label_index
+        edge_label = batch['author', 'author'].edge_label
         del batch['author', 'co_author', 'author']
         
         # Add user node features for message passing:
         batch['author'].x = embedding_author(batch['author'].n_id)
         batch['topic'].x = embedding_topic(batch['topic'].n_id)
 
-        pred = model(batch.x_dict, batch.edge_index_dict,
-                     val_data['author', 'author'].edge_label_index)
+        pred = model(batch.x_dict, batch.edge_index_dict, edge_label_index)
         pred = pred.clamp(min=0, max=1)
-        target = val_data['author', 'author'].edge_label.float()
+        target = edge_label.float()
         rmse = F.mse_loss(pred, target).sqrt()
         total_mse += rmse
         total_examples += len(pred)

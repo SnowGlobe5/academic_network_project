@@ -13,7 +13,7 @@ BATCH_SIZE = 4096
 YEAR = 2019
 
 # Check if CUDA is available, else use CPU
-device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 ROOT = "ANP_DATA"
 PATH = "ANP_MODELS/1_co_author_prediction/"
@@ -59,7 +59,7 @@ train_loader = NeighborLoader(
     sub_graph_train,
     # Sample 30 neighbors for each node and edge type for 2 iterations
     num_neighbors={key: [4096] * 2 for key in sub_graph_train.edge_types},
-    # Use a batch size of 128 for sampling training nodes of type paper
+    # Use a batch size of 16 for sampling training nodes of type paper
     batch_size=4096,
     input_nodes='author',
 )
@@ -67,7 +67,7 @@ val_loader = NeighborLoader(
     sub_graph_val,
     # Sample 30 neighbors for each node and edge type for 2 iterations
     num_neighbors={key: [4096] * 2 for key in sub_graph_val.edge_types},
-    # Use a batch size of 128 for sampling training nodes of type paper
+    # Use a batch size of 16 for sampling training nodes of type paper
     batch_size=4096,
     input_nodes='author',
 )
@@ -105,8 +105,7 @@ class EdgeDecoder(torch.nn.Module):
         super().__init__()
         self.lin1 = Linear(2 * hidden_channels, hidden_channels)
         self.lin2 = Linear(hidden_channels, hidden_channels)
-        self.lin3 = Linear(hidden_channels, hidden_channels)
-        self.lin4 = Linear(hidden_channels, 1)
+        self.lin3 = Linear(hidden_channels, 1)
 
     def forward(self, z_dict, edge_label_index):
         row, col = edge_label_index
@@ -114,8 +113,7 @@ class EdgeDecoder(torch.nn.Module):
 
         z = self.lin1(z).relu()
         z = self.lin2(z).relu()
-        z = self.lin3(z).relu()
-        z = self.lin4(z)
+        z = self.lin3(z)
         return z.view(-1)
 
 
@@ -137,14 +135,14 @@ if os.path.exists(PATH):
     model, first_epoch = anp_load(PATH)
     first_epoch += 1
 else:
-    model = Model(hidden_channels=32).to(device)
+    model = Model(hidden_channels=16).to(device)
     os.makedirs(PATH)
     with open(PATH + 'info.json', 'w') as json_file:
         json.dump([], json_file)
     first_epoch = 1
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-embedding_author = torch.nn.Embedding(data["author"].num_nodes, 32).to(device)
-embedding_topic = torch.nn.Embedding(data["topic"].num_nodes, 32).to(device)
+embedding_author = torch.nn.Embedding(data["author"].num_nodes, 16).to(device)
+embedding_topic = torch.nn.Embedding(data["topic"].num_nodes, 16).to(device)
 
 def train():
     model.train()
