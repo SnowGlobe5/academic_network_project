@@ -163,3 +163,5 @@ ANP_DATA/*
 .vscode/
 data/*
 log*.txt
+*.pdf
+graph_gen.py
