@@ -1,6 +1,8 @@
 import json
 # import cProfile
+import io
 import sys
+import multiprocessing as mp
 
 import torch
 
@@ -64,7 +66,7 @@ def update_scanned_expand_seeds(scanned, frontier, cites_edge_index, writes_edge
     return new_frontier
 
 
-def get_history_infosphere(data, data_next_year, author_id, papers_next_year):
+def get_history_infosphere_author(data, data_next_year, author_id, papers_next_year):
     author_papers_next_year = get_papers_per_author_year(data_next_year, author_id, papers_next_year)
     writes_edge_index_next_year = data_next_year['author', 'writes', 'paper'].edge_index
     cites_edge_index_next_year = data_next_year['paper', 'cites', 'paper'].edge_index
@@ -182,12 +184,16 @@ def create_mask_edge_index(edge_index, specified_edge):
     return mask
 
 
-def save_infosphere(root, fold, max_year, infosphere, missing_seeds):
-    infosphere_file = open(f"{root}/computed_infosphere/infosphere_{fold}_{max_year}.json", "w", encoding="utf-8")
+def save_infosphere(root, fold, max_year, infosphere, missing_seeds, part, index):
+    infosphere_file = io.open(f"{root}/computed_infosphere/log_{fold}_{max_year}_{part}", "w", encoding="utf-8")
+    infosphere_file.write(f"{index}")
+    infosphere_file.close()
+    
+    infosphere_file = io.open(f"{root}/computed_infosphere/infosphere_{fold}_{max_year}_{part}.json", "w", encoding="utf-8")
     infosphere_file.write(json.dumps(infosphere))
     infosphere_file.close()
 
-    missing_seeds_file = open(f"{root}/computed_infosphere/missing_seeds_{fold}_{max_year}.json", "w", encoding="utf-8")
+    missing_seeds_file = io.open(f"{root}/computed_infosphere/missing_seeds_{fold}_{max_year}_{part}.json", "w", encoding="utf-8")
     missing_seeds_file.write(json.dumps(missing_seeds))
     missing_seeds_file.close()
 
@@ -207,56 +213,67 @@ def save_infosphere(root, fold, max_year, infosphere, missing_seeds):
                     author_infosphere_edge_list[2] = torch.cat((infosphere_edge_list[ABOUT], element[1]), dim=1)
         infosphere_edge_list.append(author_infosphere_edge_list)
 
-    torch.save(infosphere_edge_list, f"{root}/computed_infosphere/infosphere_{fold}_{max_year}.pt")
-    
-        
-def main(year, n_fold, keep_relation):
-    fold = n_fold
-    max_year = year
-    keep_edges = keep_relation
-    fold_string = [str(x) for x in fold]
-    fold_string = '_'.join(fold_string)
+    torch.save(infosphere_edge_list, f"{root}/computed_infosphere/infosphere_{fold}_{max_year}_{part}.pt")
+  
+          
+def generate_infosphere_part(max_year, part, start, finish):
     root = "ANP_DATA"
 
     dataset = ANPDataset(root=root)
     data = dataset[0]
-    sub_graph, sub_graph_next_year, history_author_list, papers_next_year = anp_filter_data(data, root=root, folds=fold, max_year=max_year, keep_edges=keep_edges)
+    sub_graph, sub_graph_next_year, history_author_list, papers_next_year = anp_filter_data(data, root=root, folds=n_fold, max_year=year, keep_edges=keep_edges)
 
     sub_graph = sub_graph.to(DEVICE)
     sub_graph_next_year = sub_graph_next_year.to(DEVICE)
 
     tensor_paper_next_year = torch.tensor(papers_next_year).to(DEVICE)
-
     #history_mask = []
     infosphere = []
     missing_seeds = []
 
     time = datetime.now()
-    tot = len(history_author_list)
-    for i, author in enumerate(history_author_list):
+    tot = finish - start
+    #for i, author in enumerate(history_author_list):
+    for i, author in enumerate(range(start, finish)):
         if i % 100 == 1:
-            save_infosphere(root, fold_string, max_year, infosphere, missing_seeds)
+            save_infosphere(root, fold_string, max_year, infosphere, missing_seeds, part, author)
             delta = datetime.now() - time
             remaining = tot * delta / i
-            print(f"author processed: {i}/{tot} - {i/tot*100}% - elapsed: {str(datetime.now() - time)} - remaining: {remaining}")
+            print(f"part {part}) author processed: {i}/{tot} - {i/tot*100}% - elapsed: {str(datetime.now() - time)} - remaining: {remaining}")
         _, author_infosphere, author_missing_seeds = \
-            get_history_infosphere(sub_graph, sub_graph_next_year, i, tensor_paper_next_year)
+            get_history_infosphere_author(sub_graph, sub_graph_next_year, author, tensor_paper_next_year)
         infosphere.append(author_infosphere)
         missing_seeds.append(author_missing_seeds)
     
-    save_infosphere(root, fold_string, max_year, infosphere, missing_seeds)
+    save_infosphere(root, fold_string, max_year, infosphere, missing_seeds, part, finish)
             
 
+def main():
+    tot = 673510 #TODO 
+    delta = (int) (tot / n_parts)
+    mp.set_start_method('spawn', force=True)
+    for i in range(n_parts-1):
+        #generate_infosphere_part(year, i, delta*i, delta*(i+1))
+        p = mp.Process(target=generate_infosphere_part, args=((year, i, delta*i, delta*(i+1))))
+        p.start()
+    p = mp.Process(target=generate_infosphere_part, args=((year, n_parts-1, delta*(n_parts-1), tot)))
+    p.start()
+
+
+year = int(sys.argv[1])
+n_fold = int(sys.argv[2])
+if n_fold == -1:
+    n_fold = [0, 1, 2, 3, 4]
+else:
+    n_fold = [n_fold]
+if sys.argv[3] == 'True':
+    keep_edges = True
+else:
+    keep_edges = False
+
+n_parts = int(sys.argv[4])
+fold_string = [str(x) for x in n_fold]
+fold_string = '_'.join(fold_string)
+    
 if __name__ == "__main__":
-    year = int(sys.argv[1])
-    n_fold = int(sys.argv[2])
-    if n_fold == -1:
-        n_fold = [0, 1, 2, 3, 4]
-    else:
-        n_fold = [n_fold]
-    if sys.argv[3] == 'True':
-        keep_relation = True
-    else:
-        keep_relation = False
-    # cProfile.run('main()')
-    main(year, n_fold, keep_relation)
+    main()
