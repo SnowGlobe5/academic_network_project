@@ -131,6 +131,35 @@ def generate_co_author_edge_year(data, year):
     data['author', 'co_author', 'author'].edge_index = torch.tensor([src, dst])
     data['author', 'co_author', 'author'].edge_label = None
     
+    
+def generate_next_topic_edge_year(data, year):
+    years = data['paper'].x[:, 0]
+    mask = years == year
+    papers = torch.where(mask)[0]
+    edge_index_writes = data['author', 'writes', 'paper'].edge_index
+    edge_index_writes = edge_index_writes.to(DEVICE)
+    edge_index_about = data['paper', 'about', 'topic'].edge_index
+    edge_index_about = edge_index_about.to(DEVICE)
+    src = []
+    dst = []
+    dict_tracker = {}
+    time = datetime.now()
+    tot = len(papers)
+    for i, paper in enumerate(papers):
+        if i % 10000 == 0:
+            print(f"papers processed: {i}/{tot} - {i/tot*100}% - {str(datetime.now() - time)}")
+        sub_edge_index_writes, _ = expand_1_hop_edge_index(edge_index_writes, paper, flow='source_to_target')
+        sub_edge_index_about, _ = expand_1_hop_edge_index(edge_index_about, paper, flow='target_to_source')
+        for author in sub_edge_index_writes[0].tolist():
+            for topic in sub_edge_index_about[1].tolist():
+                if not dict_tracker.get((author, topic)):
+                    dict_tracker[(author, topic)] = True
+                    src.append(author)
+                    dst.append(topic)
+    data['author', 'next_topic', 'topic'].edge_index = torch.tensor([src, dst])
+    data['author', 'next_topic', 'topic'].edge_label = None
+    
+    
 def anp_save(model, path, epoch, loss, mse, accuracy):
     torch.save(model, path + 'model.pt')
     new = {
