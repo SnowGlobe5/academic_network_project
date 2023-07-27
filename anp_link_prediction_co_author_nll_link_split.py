@@ -176,7 +176,7 @@ def train():
 @torch.no_grad()
 def test(loader):
     model.eval()
-    total_examples = total_mse = total_correct = 0
+    total_examples = total_mse = total_correct = total_loss = 0
     for i, batch in enumerate(tqdm(loader)):
         batch = batch.to(device)
         
@@ -193,25 +193,44 @@ def test(loader):
         target = edge_label.float()
         rmse = F.mse_loss(pred, target).sqrt()
         total_mse += rmse
+        total_loss += float(loss) * len(pred)
         total_examples += len(pred)
         total_correct += int((torch.round(pred, decimals=0) == target).sum())
 
-    return total_mse / BATCH_SIZE, total_correct / total_examples
+    return total_mse / BATCH_SIZE, total_correct / total_examples, total_loss / total_examples
 
 
 # Initialize optimizer
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-for epoch in range(first_epoch, 51):
+training_loss_list = []
+validation_loss_list = []
+accuracy_list = []
+
+for epoch in range(first_epoch, 101):
     # Train the model
     loss = train()
 
     # Test the model
-    val_mse, val_acc = test(val_loader)
+    val_mse, val_acc, loss_val = test(val_loader)
 
     # Save the model
     anp_save(model, PATH, epoch, loss, val_mse.item(), val_acc)
     
+    training_loss_list.append(loss)
+    validation_loss_list.append(loss_val)
+    accuracy_list.append(val_acc)
+    
     # Print epoch results
     print(f'Epoch: {epoch:02d}, Loss: {loss:.4f}, RMSE: {val_mse:.4f}, Accuracy: {val_acc:.4f}')
     
+from matplotlib import pyplot as plt
+plt.plot(training_loss_list, label='train_loss')
+plt.plot(validation_loss_list,label='val_loss')
+plt.legend()
+plt.savefig('nll_link_split_loss.pdf')
+plt.close()
+
+plt.plot(accuracy_list,label='accuracy')
+plt.legend()
+plt.savefig('nll_link_split_accuracy.pdf')

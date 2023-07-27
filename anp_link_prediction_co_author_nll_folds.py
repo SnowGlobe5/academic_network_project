@@ -39,15 +39,38 @@ else:
 data['paper'].x = data['paper'].x.to(torch.float)
 data = T.ToUndirected()(data)
 
+# Train
+# Filter training data
+sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3 ], max_year=YEAR, keep_edges=False)    
+#sub_graph_train = sub_graph_train.to(device)
+
 transform = T.RandomLinkSplit(
-    num_val=0.1,
+    num_val=0,
     num_test=0,
-    disjoint_train_ratio=0.3,
-    neg_sampling_ratio=2.0,
-    add_negative_train_samples=False,
+    #disjoint_train_ratio=0.3,
+    #neg_sampling_ratio=2.0,
+    neg_sampling_ratio=1.0,
+    add_negative_train_samples=True,
     edge_types=('author', 'co_author', 'author')
 )
-train_data, val_data, _= transform(data)
+train_data, _, _= transform(sub_graph_train)
+
+
+# Validation
+# Filter validation data
+sub_graph_val, _, _, _ = anp_filter_data(data, root=ROOT, folds=[4], max_year=YEAR, keep_edges=False)
+#sub_graph_val = sub_graph_val.to(device)
+
+transform = T.RandomLinkSplit(
+    num_val=0,
+    num_test=0,
+    #neg_sampling_ratio=2.0,
+    neg_sampling_ratio=1.0,
+    add_negative_train_samples=True,
+    edge_types=('author', 'co_author', 'author')
+)
+val_data, _, _= transform(sub_graph_val)
+
 
 # Define seed edges:
 edge_label_index = train_data['author', 'co_author', 'author'].edge_label_index
@@ -55,10 +78,10 @@ edge_label = train_data['author', 'co_author', 'author'].edge_label
 train_loader = LinkNeighborLoader(
     data=train_data,
     num_neighbors=[20, 10],
-    neg_sampling_ratio=2.0,
+    #neg_sampling_ratio=2.0,
     edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
     edge_label=edge_label,
-    batch_size=256,
+    batch_size=1024,
     shuffle=True,
 )
 
@@ -69,7 +92,7 @@ val_loader = LinkNeighborLoader(
     num_neighbors=[20, 10],
     edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
     edge_label=edge_label,
-    batch_size=3 * 256,
+    batch_size=1024,
     shuffle=False,
 )
 
@@ -176,7 +199,7 @@ def train():
 @torch.no_grad()
 def test(loader):
     model.eval()
-    total_examples = total_mse = total_correct = 0
+    total_examples = total_mse = total_correct = total_loss = 0
     for i, batch in enumerate(tqdm(loader)):
         batch = batch.to(device)
         
@@ -192,26 +215,46 @@ def test(loader):
         pred = pred.clamp(min=0, max=1)
         target = edge_label.float()
         rmse = F.mse_loss(pred, target).sqrt()
+        loss = weighted_mse_loss(pred, target, weight)
         total_mse += rmse
+        total_loss += float(loss) * len(pred)
         total_examples += len(pred)
         total_correct += int((torch.round(pred, decimals=0) == target).sum())
 
-    return total_mse / BATCH_SIZE, total_correct / total_examples
+    return total_mse / BATCH_SIZE, total_correct / total_examples, total_loss / total_examples
 
 
 # Initialize optimizer
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+
+training_loss_list = []
+validation_loss_list = []
+accuracy_list = []
 
 for epoch in range(first_epoch, 51):
     # Train the model
     loss = train()
 
     # Test the model
-    val_mse, val_acc = test(val_loader)
+    val_mse, val_acc, loss_val = test(val_loader)
 
     # Save the model
     anp_save(model, PATH, epoch, loss, val_mse.item(), val_acc)
     
+    training_loss_list.append(loss)
+    validation_loss_list.append(loss_val)
+    accuracy_list.append(val_acc)
+    
     # Print epoch results
     print(f'Epoch: {epoch:02d}, Loss: {loss:.4f}, RMSE: {val_mse:.4f}, Accuracy: {val_acc:.4f}')
     
+from matplotlib import pyplot as plt
+plt.plot(training_loss_list, label='train_loss')
+plt.plot(validation_loss_list,label='val_loss')
+plt.legend()
+plt.savefig('nll_fold_loss2.pdf')
+plt.close()
+
+plt.plot(accuracy_list,label='accuracy')
+plt.legend()
+plt.savefig('nll_fold_accuracy2.pdf')
