@@ -12,8 +12,6 @@ from tqdm import tqdm
 BATCH_SIZE = 4096
 YEAR = 2019
 
-# Check if CUDA is available, else use CPU
-device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 ROOT = "ANP_DATA"
 PATH = "ANP_MODELS/1_co_author_prediction/"
@@ -36,13 +34,13 @@ data['paper'].x = data['paper'].x.to(torch.float)
 # Train
 # Filter training data
 sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3 ], max_year=YEAR, keep_edges=False)    
-sub_graph_train = sub_graph_train.to(device)
+sub_graph_train = sub_graph_train.to(DEVICE)
 sub_graph_train = T.ToUndirected()(sub_graph_train)
 
 # Validation
 # Filter validation data
 sub_graph_val, _, _, _ = anp_filter_data(data, root=ROOT, folds=[4], max_year=YEAR, keep_edges=False)
-sub_graph_val = sub_graph_val.to(device)
+sub_graph_val = sub_graph_val.to(DEVICE)
 sub_graph_val = T.ToUndirected()(sub_graph_val)
 
 # Set loader parameters
@@ -100,12 +98,12 @@ class Model(torch.nn.Module):
         return self.decoder(z_dict, edge_label_index)
 
 
-# Create model, optimizer, and move model to device
+# Create model, optimizer, and move model to DEVICE
 if os.path.exists(PATH):
     model, first_epoch = anp_load(PATH)
     first_epoch += 1
 else:
-    model = Model(hidden_channels=32).to(device)
+    model = Model(hidden_channels=32).to(DEVICE)
     os.makedirs(PATH)
     with open(PATH + 'info.json', 'w') as json_file:
         json.dump([], json_file)
@@ -122,7 +120,7 @@ def train():
         batch['author'].x = embedding(batch['author'].n_id)
         del batch['paper', 'rev_writes', 'author']
         del batch['topic', 'rev_about', 'paper']
-        batch = batch.to(device)
+        batch = batch.to(DEVICE)
 
         # Add 0/1 features to co_author edge:
         train_data, _, _ = T.RandomLinkSplit(
@@ -154,7 +152,7 @@ def test(loader):
         batch['author'].x = embedding(batch['author'].n_id)
         del batch['paper', 'rev_writes', 'author']
         del batch['topic', 'rev_about', 'paper']
-        batch = batch.to(device)
+        batch = batch.to(DEVICE)
 
         # Add 0/1 label to co_author edge:
         val_data, _, _ = T.RandomLinkSplit(

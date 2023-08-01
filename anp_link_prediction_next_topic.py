@@ -12,9 +12,6 @@ from tqdm import tqdm
 BATCH_SIZE = 4096
 YEAR = 2019
 
-# Check if CUDA is available, else use CPU
-device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
-
 ROOT = "ANP_DATA"
 PATH = "ANP_MODELS/3_next_topic_prediction/"
 
@@ -37,13 +34,13 @@ data['paper'].x = data['paper'].x.to(torch.float)
 # Filter training data
 print(data)
 sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3 ], max_year=YEAR, keep_edges=False)    
-sub_graph_train = sub_graph_train.to(device)
+sub_graph_train = sub_graph_train.to(DEVICE)
 sub_graph_train = T.ToUndirected()(sub_graph_train)
 
 # Validation
 # Filter validation data
 sub_graph_val, _, _, _ = anp_filter_data(data, root=ROOT, folds=[4], max_year=YEAR, keep_edges=False)
-sub_graph_val = sub_graph_val.to(device)
+sub_graph_val = sub_graph_val.to(DEVICE)
 sub_graph_val = T.ToUndirected()(sub_graph_val)
 
 # Set loader parameters
@@ -111,7 +108,7 @@ if False:
     model, first_epoch = anp_load(PATH)
     first_epoch += 1
 else:
-    model = Model(hidden_channels=32).to(device)
+    model = Model(hidden_channels=32).to(DEVICE)
     # os.makedirs(PATH)
     # with open(PATH + 'info.json', 'w') as json_file:
     #     json.dump([], json_file)
@@ -130,7 +127,7 @@ def train():
         batch['topic'].x = embedding_topic(batch['topic'].n_id)
         del batch['paper', 'rev_writes', 'author']
         del batch['topic', 'rev_about', 'paper']
-        batch = batch.to(device)
+        batch = batch.to(DEVICE)
 
         # Add 0/1 features to next_topic edge:
         train_data, _, _ = T.RandomLinkSplit(
@@ -163,7 +160,7 @@ def test(loader):
         batch['topic'].x = embedding_topic(batch['topic'].n_id)
         del batch['paper', 'rev_writes', 'author']
         del batch['topic', 'rev_about', 'paper']
-        batch = batch.to(device)
+        batch = batch.to(DEVICE)
 
         # Add 0/1 label to next_topic edge:
         val_data, _, _ = T.RandomLinkSplit(

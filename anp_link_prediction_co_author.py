@@ -12,9 +12,6 @@ from tqdm import tqdm
 BATCH_SIZE = 4096
 YEAR = 2019
 
-# Check if CUDA is available, else use CPU
-device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
-
 ROOT = "ANP_DATA"
 PATH = "ANP_MODELS/1_co_author_prediction/"
 
@@ -42,12 +39,12 @@ data = T.ToUndirected()(data)
 # Train
 # Filter training data
 sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3 ], max_year=YEAR, keep_edges=False)    
-sub_graph_train = sub_graph_train.to(device)
+sub_graph_train = sub_graph_train.to(DEVICE)
 
 # Validation
 # Filter validation data
 sub_graph_val, _, _, _ = anp_filter_data(data, root=ROOT, folds=[4], max_year=YEAR, keep_edges=False)
-sub_graph_val = sub_graph_val.to(device)
+sub_graph_val = sub_graph_val.to(DEVICE)
 
 # Set loader parameters
 #kwargs = {'batch_size': BATCH_SIZE, 'num_workers': 6, 'persistent_workers': True}
@@ -135,20 +132,20 @@ if os.path.exists(PATH):
     model, first_epoch = anp_load(PATH)
     first_epoch += 1
 else:
-    model = Model(hidden_channels=32).to(device)
+    model = Model(hidden_channels=32).to(DEVICE)
     os.makedirs(PATH)
     with open(PATH + 'info.json', 'w') as json_file:
         json.dump([], json_file)
     first_epoch = 1
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-embedding_author = torch.nn.Embedding(data["author"].num_nodes, 32).to(device)
-embedding_topic = torch.nn.Embedding(data["topic"].num_nodes, 32).to(device)
+embedding_author = torch.nn.Embedding(data["author"].num_nodes, 32).to(DEVICE)
+embedding_topic = torch.nn.Embedding(data["topic"].num_nodes, 32).to(DEVICE)
 
 def train():
     model.train()
     total_examples = total_loss = 0
     for i, batch in enumerate(tqdm(train_loader)):
-        batch = batch.to(device)
+        batch = batch.to(DEVICE)
         
         try:
             # Add 0/1 features to co_author edge:
@@ -185,7 +182,7 @@ def test(loader):
     model.eval()
     total_examples = total_mse = total_correct = 0
     for i, batch in enumerate(tqdm(loader)):
-        batch = batch.to(device)
+        batch = batch.to(DEVICE)
         
         try:
             # Add 0/1 label to co_author edge:

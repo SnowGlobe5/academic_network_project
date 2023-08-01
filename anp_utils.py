@@ -12,7 +12,7 @@ WRITES = 1
 ABOUT = 2
 
 MAX_ITERATION = 1
-DEVICE = 'cuda:1'
+DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 
 def expand_1_hop_edge_index(edge_index, node, flow):
