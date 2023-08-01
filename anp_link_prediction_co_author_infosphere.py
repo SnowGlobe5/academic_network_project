@@ -32,11 +32,11 @@ fold_string = '_'.join(fold_string)
 # Get infosphere
 if os.path.exists(f"{ROOT}/computed_infosphere/infosphere_{fold_string}_{YEAR}_expanded.pt"):
     infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/infosphere_{fold_string}_{YEAR}_expanded.pt")
-    data['paper', 'infosphere_cites', 'paper'].edge_index = infosphere_edges[CITES]
+    data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(infosphere_edges[CITES])
     data['paper', 'infosphere_cites', 'paper'].edge_label = None
-    data['author', 'infosphere_writes', 'paper'].edge_index = infosphere_edges[WRITES]
+    data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(infosphere_edges[WRITES])
     data['author', 'infosphere_writes', 'paper'].edge_label = None
-    data['paper', 'infosphere_about', 'topic'].edge_index = infosphere_edges[ABOUT]
+    data['paper', 'infosphere_about', 'topic'].edge_index = coalesce(infosphere_edges[ABOUT])
     data['paper', 'infosphere_about', 'topic'].edge_label = None
 else:
     raise Exception(f"infosphere_{fold_string}_{YEAR}_expanded.pt not found!!")
