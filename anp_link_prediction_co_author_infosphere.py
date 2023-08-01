@@ -50,9 +50,10 @@ if os.path.exists(f"{ROOT}/processed/difference_co_author_edge{YEAR}.pt"):
     data['author', 'difference_co_author', 'author'].edge_index = torch.load(f"{ROOT}/processed/difference_co_author_edge{YEAR}.pt")
     data['author', 'difference_co_author', 'author'].edge_label = None
 else:
-    print("Generating next co-author edge...")
-    generate_difference_co_author_edge_year(data, YEAR, ROOT)
-    torch.save(data['author', '_difference_co_author', 'author'].edge_index, f"{ROOT}/processed/difference_co_author_edge{YEAR}.pt")
+    print("Generating difference co-author edge...")
+    data['author', 'co_author', 'author'].edge_index = generate_difference_co_author_edge_year(data, YEAR, ROOT)
+    data['author', 'co_author', 'author'].edge_label = None
+    torch.save(data['author', 'difference_co_author', 'author'].edge_index, f"{ROOT}/processed/difference_co_author_edge{YEAR}.pt")
 
 # Make paper features float and the graph undirected
 data['paper'].x = data['paper'].x.to(torch.float)
