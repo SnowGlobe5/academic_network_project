@@ -196,25 +196,7 @@ def save_infosphere(root, fold, max_year, infosphere, missing_seeds, part, index
     missing_seeds_file = io.open(f"{root}/computed_infosphere/missing_seeds_{fold}_{max_year}_{part}.json", "w", encoding="utf-8")
     missing_seeds_file.write(json.dumps(missing_seeds))
     missing_seeds_file.close()
-
-    infosphere_edge_list = []
-    for author_infosphere in infosphere:
-        author_infosphere_edge_list = [
-            torch.tensor([]).to(torch.int64).to(DEVICE),
-            torch.tensor([]).to(torch.int64).to(DEVICE),
-            torch.tensor([]).to(torch.int64).to(DEVICE)]
-        for element in author_infosphere:
-            match element[0]:
-                case 'cites':
-                    author_infosphere_edge_list[0] = torch.cat((infosphere_edge_list[CITES], element[1]), dim=1)
-                case 'writes':
-                    author_infosphere_edge_list[1] = torch.cat((infosphere_edge_list[WRITES], element[1]), dim=1)
-                case 'about':
-                    author_infosphere_edge_list[2] = torch.cat((infosphere_edge_list[ABOUT], element[1]), dim=1)
-        infosphere_edge_list.append(author_infosphere_edge_list)
-
-    torch.save(infosphere_edge_list, f"{root}/computed_infosphere/infosphere_{fold}_{max_year}_{part}.pt")
-  
+ 
           
 def generate_infosphere_part(max_year, part, start, finish):
     root = "ANP_DATA"
@@ -238,8 +220,8 @@ def generate_infosphere_part(max_year, part, start, finish):
         if i % 100 == 1:
             save_infosphere(root, fold_string, max_year, infosphere, missing_seeds, part, author)
             delta = datetime.now() - time
-            remaining = tot * delta / i
-            print(f"part {part}) author processed: {i}/{tot} - {i/tot*100}% - elapsed: {str(datetime.now() - time)} - remaining: {remaining}")
+            remaining = tot * delta / i - delta
+            print(f"part {part}) author processed: {i}/{tot} - {i/tot*100}% - elapsed: {str(delta)} - remaining: {remaining}")
         _, author_infosphere, author_missing_seeds = \
             get_history_infosphere_author(sub_graph, sub_graph_next_year, author, tensor_paper_next_year)
         infosphere.append(author_infosphere)
