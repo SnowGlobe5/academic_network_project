@@ -26,7 +26,8 @@ if os.path.exists(f"{ROOT}/processed/co_author_edge{YEAR}.pt"):
     data['author', 'co_author', 'author'].edge_label = None
 else:
     print("Generating co-author edge...")
-    generate_co_author_edge_year(data, YEAR)
+    data['author', 'co_author', 'author'].edge_index = generate_co_author_edge_year(data, YEAR)
+    data['author', 'co_author', 'author'].edge_label = None
     torch.save(data['author', 'co_author', 'author'].edge_index, f"{ROOT}/processed/co_author_edge{YEAR}.pt")
 
 data['paper'].x = data['paper'].x.to(torch.float)

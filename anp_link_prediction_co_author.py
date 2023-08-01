@@ -15,9 +15,12 @@ YEAR = 2019
 ROOT = "ANP_DATA"
 PATH = "ANP_MODELS/1_co_author_prediction/"
 
+#TODO remove
 import shutil
-shutil.rmtree(PATH)
-
+try:
+    shutil.rmtree(PATH)
+except:
+    pass
 # Create ANP dataset
 dataset = ANPDataset(root=ROOT)
 data = dataset[0]
@@ -29,7 +32,8 @@ if os.path.exists(f"{ROOT}/processed/co_author_edge{YEAR}.pt"):
     data['author', 'co_author', 'author'].edge_label = None
 else:
     print("Generating co-author edge...")
-    generate_co_author_edge_year(data, YEAR)
+    data['author', 'co_author', 'author'].edge_index = generate_co_author_edge_year(data, YEAR)
+    data['author', 'co_author', 'author'].edge_label = None
     torch.save(data['author', 'co_author', 'author'].edge_index, f"{ROOT}/processed/co_author_edge{YEAR}.pt")
 
 # Make paper features float and the graph undirected

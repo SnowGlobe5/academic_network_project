@@ -128,9 +128,8 @@ def generate_co_author_edge_year(data, year):
                     dict_tracker[(author, co_author)] = True
                     src.append(author)
                     dst.append(co_author)
-    data['author', 'co_author', 'author'].edge_index = torch.tensor([src, dst])
-    data['author', 'co_author', 'author'].edge_label = None
-    
+    return torch.tensor([src, dst])
+   
     
 def generate_next_topic_edge_year(data, year):
     years = data['paper'].x[:, 0]
