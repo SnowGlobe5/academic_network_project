@@ -16,11 +16,31 @@ ROOT = "ANP_DATA"
 PATH = "ANP_MODELS/1_co_author_prediction/"
 
 import shutil
-shutil.rmtree(PATH)
+try:
+    shutil.rmtree(PATH)
+except:
+    pass
 
 # Create ANP dataset
 dataset = ANPDataset(root=ROOT)
 data = dataset[0]
+
+fold = [1] #TODO param
+fold_string = [str(x) for x in fold]
+fold_string = '_'.join(fold_string)
+
+# Get infosphere
+if os.path.exists(f"{ROOT}/computed_infosphere/infosphere_{fold_string}_{YEAR}_expanded.pt"):
+    infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/infosphere_{fold_string}_{YEAR}_expanded.pt")
+    data['paper', 'infosphere_cites', 'paper'].edge_index = infosphere_edges[CITES]
+    data['paper', 'infosphere_cites', 'paper'].edge_label = None
+    data['author', 'infosphere_writes', 'paper'].edge_index = infosphere_edges[WRITES]
+    data['author', 'infosphere_writes', 'paper'].edge_label = None
+    data['paper', 'infosphere_about', 'topic'].edge_index = infosphere_edges[ABOUT]
+    data['paper', 'infosphere_about', 'topic'].edge_label = None
+else:
+    raise Exception(f"infosphere_{fold_string}_{YEAR}_expanded.pt not found!!")
+ 
 
 # Use already existing co-author edge (if exist)
 if os.path.exists(f"{ROOT}/processed/co_author_edge{YEAR}.pt"):
