@@ -200,6 +200,10 @@ def save_infosphere(root, fold, max_year, infosphere, missing_seeds, part, index
           
 def generate_infosphere_part(max_year, part, start, finish):
     root = "ANP_DATA"
+    
+    if d_cuda:
+        if part % 2 == 0: DEVICE = 'cuda:0'
+        else: DEVICE = 'cuda:1'
 
     dataset = ANPDataset(root=root)
     data = dataset[0]
@@ -231,7 +235,7 @@ def generate_infosphere_part(max_year, part, start, finish):
             
 
 def main():
-    tot = 673510 #TODO 
+    tot = 5259857  #TODO 
     delta = (int) (tot / n_parts)
     mp.set_start_method('spawn', force=True)
     for i in range(n_parts-1):
@@ -252,8 +256,12 @@ if sys.argv[3] == 'True':
     keep_edges = True
 else:
     keep_edges = False
-
+    
 n_parts = int(sys.argv[4])
+if sys.argv[5] == 'True':
+    d_cuda = True
+else:
+    d_cuda = False
 fold_string = [str(x) for x in n_fold]
 fold_string = '_'.join(fold_string)
     
