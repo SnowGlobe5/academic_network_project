@@ -58,39 +58,19 @@ else:
 # Make paper features float and the graph undirected
 data['paper'].x = data['paper'].x.to(torch.float)
 data = T.ToUndirected()(data)
+data = data.to('cpu')
 
-# Train
-# Filter training data
-sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3 ], max_year=YEAR, keep_edges=False)    
-#sub_graph_train = sub_graph_train.to(DEVICE)
+data, _, _, _ = anp_filter_data(data, root=ROOT, folds=[1], max_year=YEAR, keep_edges=False)
 
 transform = T.RandomLinkSplit(
-    num_val=0,
+    num_val=0.1,
     num_test=0,
-    #disjoint_train_ratio=0.3,
-    #neg_sampling_ratio=2.0,
-    neg_sampling_ratio=1.0,
-    add_negative_train_samples=True,
+    disjoint_train_ratio=0.3,
+    neg_sampling_ratio=2.0,
+    add_negative_train_samples=False,
     edge_types=('author', 'difference_co_author', 'author')
 )
-train_data, _, _= transform(sub_graph_train)
-
-
-# Validation
-# Filter validation data
-sub_graph_val, _, _, _ = anp_filter_data(data, root=ROOT, folds=[4], max_year=YEAR, keep_edges=False)
-#sub_graph_val = sub_graph_val.to(DEVICE)
-
-transform = T.RandomLinkSplit(
-    num_val=0,
-    num_test=0,
-    #neg_sampling_ratio=2.0,
-    neg_sampling_ratio=1.0,
-    add_negative_train_samples=True,
-    edge_types=('author', 'difference_co_author', 'author')
-)
-val_data, _, _= transform(sub_graph_val)
-
+train_data, val_data, _= transform(data)
 
 # Define seed edges:
 edge_label_index = train_data['author', 'difference_co_author', 'author'].edge_label_index
@@ -98,10 +78,10 @@ edge_label = train_data['author', 'difference_co_author', 'author'].edge_label
 train_loader = LinkNeighborLoader(
     data=train_data,
     num_neighbors=[20, 10],
-    #neg_sampling_ratio=2.0,
+    neg_sampling_ratio=2.0,
     edge_label_index=(('author', 'difference_co_author', 'author'), edge_label_index),
     edge_label=edge_label,
-    batch_size=1024,
+    batch_size=256,
     shuffle=True,
 )
 
@@ -112,7 +92,7 @@ val_loader = LinkNeighborLoader(
     num_neighbors=[20, 10],
     edge_label_index=(('author', 'difference_co_author', 'author'), edge_label_index),
     edge_label=edge_label,
-    batch_size=1024,
+    batch_size=3 * 256,
     shuffle=False,
 )
 
