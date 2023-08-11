@@ -11,7 +11,7 @@ from torch_geometric.nn import SAGEConv, to_hetero
 from tqdm import tqdm
 
 BATCH_SIZE = 4096
-YEAR = 2019
+YEAR = 2020
 
 ROOT = "ANP_DATA"
 PATH = "ANP_MODELS/1_co_author_prediction/"
@@ -32,8 +32,8 @@ fold_string = [str(x) for x in fold]
 fold_string = '_'.join(fold_string)
 
 # Get infosphere
-if os.path.exists(f"{ROOT}/computed_infosphere/infosphere_{fold_string}_{YEAR}_expanded.pt"):
-    infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/infosphere_{fold_string}_{YEAR}_expanded.pt")
+if os.path.exists(f"{ROOT}/computed_infosphere/infosphere_{fold_string}_{YEAR-1}_expanded.pt"):
+    infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/infosphere_{fold_string}_{YEAR-1}_expanded.pt")
     data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(infosphere_edges[CITES])
     data['paper', 'infosphere_cites', 'paper'].edge_label = None
     data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(infosphere_edges[WRITES])
@@ -256,7 +256,7 @@ training_loss_list = []
 validation_loss_list = []
 accuracy_list = []
 
-for epoch in range(first_epoch, 101):
+for epoch in range(first_epoch, 51):
     # Train the model
     loss = train()
 
