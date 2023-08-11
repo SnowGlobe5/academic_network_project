@@ -60,12 +60,10 @@ data['paper'].x = data['paper'].x.to(torch.float)
 data = T.ToUndirected()(data)
 data = data.to('cpu')
 
-data, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3, 4], max_year=YEAR, keep_edges=False)
-
 
 # Train
 # Filter training data
-sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3 ], max_year=YEAR, keep_edges=False)    
+sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3], max_year=YEAR, keep_edges=False)    
 #sub_graph_train = sub_graph_train.to(DEVICE)
 
 transform = T.RandomLinkSplit(
@@ -75,7 +73,7 @@ transform = T.RandomLinkSplit(
     #neg_sampling_ratio=2.0,
     neg_sampling_ratio=1.0,
     add_negative_train_samples=True,
-    edge_types=('author', 'co_author', 'author')
+    edge_types=('author', 'difference_co_author', 'author')
 )
 train_data, _, _= transform(sub_graph_train)
 
@@ -91,29 +89,29 @@ transform = T.RandomLinkSplit(
     #neg_sampling_ratio=2.0,
     neg_sampling_ratio=1.0,
     add_negative_train_samples=True,
-    edge_types=('author', 'co_author', 'author')
+    edge_types=('author', 'difference_co_author', 'author')
 )
 val_data, _, _= transform(sub_graph_val)
 
 # Define seed edges:
-edge_label_index = train_data['author', 'co_author', 'author'].edge_label_index
-edge_label = train_data['author', 'co_author', 'author'].edge_label
+edge_label_index = train_data['author', 'difference_co_author', 'author'].edge_label_index
+edge_label = train_data['author', 'difference_co_author', 'author'].edge_label
 train_loader = LinkNeighborLoader(
     data=train_data,
     num_neighbors=[20, 10],
     #neg_sampling_ratio=2.0,
-    edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
+    edge_label_index=(('author', 'difference_co_author', 'author'), edge_label_index),
     edge_label=edge_label,
     batch_size=1024,
     shuffle=True,
 )
 
-edge_label_index = val_data['author', 'co_author', 'author'].edge_label_index
-edge_label = val_data['author', 'co_author', 'author'].edge_label
+edge_label_index = val_data['author', 'difference_co_author', 'author'].edge_label_index
+edge_label = val_data['author', 'difference_co_author', 'author'].edge_label
 val_loader = LinkNeighborLoader(
     data=val_data,
     num_neighbors=[20, 10],
-    edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
+    edge_label_index=(('author', 'difference_co_author', 'author'), edge_label_index),
     edge_label=edge_label,
     batch_size=1024,
     shuffle=False,
@@ -138,12 +136,14 @@ class GNNEncoder(torch.nn.Module):
         self.conv2 = SAGEConv((-1, -1), out_channels)
         self.conv3 = SAGEConv((-1, -1), out_channels)
         self.conv4 = SAGEConv((-1, -1), out_channels)
+        self.conv5 = SAGEConv((-1, -1), out_channels)
 
     def forward(self, x, edge_index):
         x = self.conv1(x, edge_index).relu()
         x = self.conv2(x, edge_index).relu()
         x = self.conv3(x, edge_index).relu()
-        x = self.conv4(x, edge_index)
+        x = self.conv4(x, edge_index).relu()
+        x = self.conv5(x, edge_index)
         return x
 
 
@@ -153,7 +153,8 @@ class EdgeDecoder(torch.nn.Module):
         self.lin1 = Linear(2 * hidden_channels, hidden_channels)
         self.lin2 = Linear(hidden_channels, hidden_channels)
         self.lin3 = Linear(hidden_channels, hidden_channels)
-        self.lin4 = Linear(hidden_channels, 1)
+        self.lin4 = Linear(hidden_channels, hidden_channels)
+        self.lin5 = Linear(hidden_channels, 1)
 
     def forward(self, z_dict, edge_label_index):
         row, col = edge_label_index
@@ -162,7 +163,8 @@ class EdgeDecoder(torch.nn.Module):
         z = self.lin1(z).relu()
         z = self.lin2(z).relu()
         z = self.lin3(z).relu()
-        z = self.lin4(z)
+        z = self.lin4(z).relu()
+        z = self.lin5(z)
         return z.view(-1)
 
 
