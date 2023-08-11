@@ -187,10 +187,40 @@ def generate_next_topic_edge_year(data, year):
                     dict_tracker[(author, topic)] = True
                     src.append(author)
                     dst.append(topic)
-    data['author', 'next_topic', 'topic'].edge_index = torch.tensor([src, dst])
-    data['author', 'next_topic', 'topic'].edge_label = None
+    return torch.tensor([src, dst])
     
     
+def generate_difference_next_topic_edge_year(data, year, root):
+    difference_edge_index = torch.tensor([[],[]]).to(torch.int64).to(DEVICE)
+    # Use already existing next-topic edge (if exist)
+    if os.path.exists(f"{root}/processed/next_topic_edge{year}.pt"):
+        print("Current next-topic edge found!")
+        current_edge_index = torch.load(f"{root}/processed/next_topic_edge{year}.pt")
+    else:
+        print("Generating current next-topic edge...")
+        current_edge_index =  generate_next_topic_edge_year(data, year)
+        torch.save(current_edge_index, f"{root}/processed/next_topic_edge{year}.pt")
+        
+    if os.path.exists(f"{root}/processed/next_topic_edge{year+1}.pt"):
+        print("Next next-topic edge found!")
+        next_edge_index = torch.load(f"{root}/processed/next_topic_edge{year+1}.pt")
+    else:
+        print("Generating next next-topic edge...")
+        next_edge_index =  generate_next_topic_edge_year(data, year+1)
+        torch.save(next_edge_index, f"{root}/processed/next_topic_edge{year+1}.pt")
+    
+    time = datetime.now()
+    tot = len(next_edge_index[0])
+    for i in range(tot):
+        if i % 10000 == 0:
+            print(f"author edge processed: {i}/{tot} - {i/tot*100}% - {str(datetime.now() - time)}")
+        mask = current_edge_index[0] == next_edge_index[0][i]
+        if not next_edge_index[1][i] in current_edge_index[:, mask][1]:
+            difference_edge_index = torch.cat((difference_edge_index, torch.Tensor([[next_edge_index[0][i]],[next_edge_index[1][i]]]).to(torch.int64).to(DEVICE)), dim=1)
+    
+    return difference_edge_index
+
+   
 def anp_save(model, path, epoch, loss, mse, accuracy):
     torch.save(model, path + 'model.pt')
     new = {
