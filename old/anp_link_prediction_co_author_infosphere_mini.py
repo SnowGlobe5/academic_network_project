@@ -252,9 +252,9 @@ from matplotlib import pyplot as plt
 plt.plot(training_loss_list, label='train_loss')
 plt.plot(validation_loss_list,label='val_loss')
 plt.legend()
-plt.savefig('nll_fold_loss2.pdf')
+plt.savefig('output/nll_fold_loss2.pdf')
 plt.close()
 
 plt.plot(accuracy_list,label='accuracy')
 plt.legend()
-plt.savefig('nll_fold_accuracy2.pdf')
+plt.savefig('output/nll_fold_accuracy2.pdf')

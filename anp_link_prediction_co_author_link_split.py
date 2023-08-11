@@ -230,9 +230,9 @@ from matplotlib import pyplot as plt
 plt.plot(training_loss_list, label='train_loss')
 plt.plot(validation_loss_list,label='val_loss')
 plt.legend()
-plt.savefig('nll_link_split_loss.pdf')
+plt.savefig('output/nll_link_split_loss.pdf')
 plt.close()
 
 plt.plot(accuracy_list,label='accuracy')
 plt.legend()
-plt.savefig('nll_link_split_accuracy.pdf')
+plt.savefig('output/nll_link_split_accuracy.pdf')

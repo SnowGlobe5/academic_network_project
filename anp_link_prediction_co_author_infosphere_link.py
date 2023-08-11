@@ -252,9 +252,9 @@ from matplotlib import pyplot as plt
 plt.plot(training_loss_list, label='train_loss')
 plt.plot(validation_loss_list,label='val_loss')
 plt.legend()
-plt.savefig('anp_link_prediction_co_author_infosphere_link_loss.pdf')
+plt.savefig('output/anp_link_prediction_co_author_infosphere_link_loss.pdf')
 plt.close()
 
 plt.plot(accuracy_list,label='accuracy')
 plt.legend()
-plt.savefig('anp_link_prediction_co_author_infosphere_link_accuracy.pdf')
+plt.savefig('output/anp_link_prediction_co_author_infosphere_link_accuracy.pdf')
