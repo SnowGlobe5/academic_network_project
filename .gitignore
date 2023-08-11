@@ -163,6 +163,5 @@ ANP_DATA/*
 ANP_MODELS/*
 .vscode/
 data/*
-log*.txt
-*.pdf
+output/*
 graph_gen.py
