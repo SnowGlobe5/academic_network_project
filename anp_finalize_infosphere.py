@@ -3,8 +3,8 @@ import anp_expansion
 from anp_dataset import ANPDataset
 from anp_utils import *
 
-N_NODE = 5
-N_CHILDREN = 5
+N_NODE = 3
+N_CHILDREN = 3
 
 
 def json_to_edge_list(infosphere):
@@ -62,5 +62,5 @@ def finalize_infosphere(fold, year, keep_edges):
     except FileNotFoundError:
         torch.save(authors_infosphere_edge_list, f"ANP_DATA/computed_infosphere/infosphere_{fold_string}_{year}_expanded.pt")
         
-finalize_infosphere([1], 2019, False)
+finalize_infosphere([0, 1, 2, 3, 4], 2019, True)
             
