@@ -222,6 +222,18 @@ def test(loader):
         total_loss += float(loss) * len(pred)
         total_examples += len(pred)
         total_correct += int((torch.round(pred, decimals=0) == target).sum())
+        
+        for i in range(len(target)):
+            if target[i].item() == 0:
+                if torch.round(pred, decimals=0)[i].item() == 0:
+                    confusion_matrix['tn'] += 1
+                else:
+                    confusion_matrix['fn'] += 1
+            else:
+                if torch.round(pred, decimals=0)[i].item() == 1:
+                    confusion_matrix['tp'] += 1
+                else:
+                    confusion_matrix['fp'] += 1
 
     return total_mse / BATCH_SIZE, total_correct / total_examples, total_loss / total_examples
 
@@ -232,6 +244,12 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 training_loss_list = []
 validation_loss_list = []
 accuracy_list = []
+confusion_matrix = {
+    'tp': 0,
+    'fp': 0,
+    'fn': 0,
+    'tn': 0
+}
 
 for epoch in range(first_epoch, 51):
     # Train the model
@@ -250,13 +268,4 @@ for epoch in range(first_epoch, 51):
     # Print epoch results
     print(f'Epoch: {epoch:02d}, Loss: {loss:.4f}, RMSE: {val_mse:.4f}, Accuracy: {val_acc:.4f}')
     
-from matplotlib import pyplot as plt
-plt.plot(training_loss_list, label='train_loss')
-plt.plot(validation_loss_list,label='val_loss')
-plt.legend()
-plt.savefig('output/nll_fold_loss2.pdf')
-plt.close()
-
-plt.plot(accuracy_list,label='accuracy')
-plt.legend()
-plt.savefig('output/nll_fold_accuracy2.pdf')
+generate_graph (training_loss_list, validation_loss_list, accuracy_list, confusion_matrix)

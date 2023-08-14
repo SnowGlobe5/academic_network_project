@@ -1,6 +1,9 @@
 import torch
 import json
+import sys
 from datetime import datetime
+from matplotlib import pyplot as plt
+import seaborn as sn
 import pandas as pd
 import os
 
@@ -234,9 +237,31 @@ def anp_save(model, path, epoch, loss, mse, accuracy):
     data.append(new)
     with open(path + 'info.json', 'w') as json_file:
         json.dump(data, json_file)
+       
         
 def anp_load(path):
     with open(path + 'info.json', 'r') as json_file:
         data = json.load(json_file)
     return torch.load(path + 'model.pt'), data[-1]["epoch"]
+
+
+def generate_graph (training_loss_list, validation_loss_list, accuracy_list, confusion_matrix):
+    time = datetime.now()
+    plt.plot(training_loss_list, label='train_loss')
+    plt.plot(validation_loss_list,label='val_loss')
+    plt.legend()
+    plt.savefig(f'output/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_loss.pdf')
+    plt.close()
+
+    plt.plot(accuracy_list,label='accuracy')
+    plt.legend()
+    plt.savefig(f'output/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_accuracy.pdf')
+    plt.close()
+
+    array = [[confusion_matrix['tp'], confusion_matrix['fp']],[confusion_matrix['fn'], confusion_matrix['tn']]]
+    df_cm = pd.DataFrame(array, index = [i for i in ("POSITIVE", "NEGATIVE")],
+                    columns = [i for i in ("POSITIVE", "NEGATIVE")])
+    plt.figure(figsize = (10,7))
+    sn.heatmap(df_cm, annot=True)
+    plt.savefig(f'output/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_CM.pdf')
     
