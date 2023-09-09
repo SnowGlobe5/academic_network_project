@@ -127,4 +127,142 @@ def expand_infosphere(data, edge_list, n_node, n_children, selection_policy, exp
             # else:
             #     retry -= 1
     return True
+
         
+def set_color(edges, color, color_tracker):
+    for element in edges[CITES]:
+        if not color_tracker['paper'][element[0]]:
+            color_tracker['paper'][element[0]] = color
+        if not color_tracker['paper'][element[1]]:
+            color_tracker['paper'][element[1]] = color
+            
+    for element in edges[WRITES]:
+        if not color_tracker['author'][element[0]]:
+            color_tracker['author'][element[0]] = color
+        if not color_tracker['paper'][element[1]]:
+            color_tracker['paper'][element[1]] = color
+            
+    for element in edges[ABOUT]:
+        if not color_tracker['paper'][element[0]]:
+            color_tracker['paper'][element[0]] = color
+        if not color_tracker['topic'][element[1]]:
+            color_tracker['topic'][element[1]] = color
+    
+
+def expand_seeds(current_node, color, data, color_tracker, exploration_tracker, expanded_edge):
+    nodes = {}
+    if current_node[0] == PAPER:
+        sub_edge_index, _ = expand_1_hop_edge_index(data['paper', 'cites', 'paper'].edge_index, current_node[1], flow='target_to_source')
+        for paper in sub_edge_index[1].tolist():
+            if color_tracker['paper'][paper] == color:
+                nodes[(PAPER, paper)] = exploration_tracker['paper'][paper]
+                    
+        sub_edge_index, _ = expand_1_hop_edge_index(data['author', 'writes', 'paper'].edge_index, current_node[1], flow='source_to_target')
+        for author in sub_edge_index[0].tolist():
+            if color_tracker['author'][author] == color:
+                nodes[(AUTHOR, author)] = exploration_tracker['author'][author]
+                
+        sub_edge_index, _ = expand_1_hop_edge_index(data['paper', 'about', 'topic'].edge_index, current_node[1], flow='target_to_source')
+        for topic in sub_edge_index[1].tolist():
+            if color_tracker['topic'][topic] == color:
+                nodes[(TOPIC, topic)] = exploration_tracker['topic'][topic]         
+                  
+    elif current_node[0] == AUTHOR:
+        sub_edge_index, _ = expand_1_hop_edge_index(data['author', 'writes', 'paper'].edge_index, current_node[1], flow='target_to_source')
+        for paper in sub_edge_index[1].tolist():
+            if color_tracker['paper'][paper] == color:
+                nodes[(PAPER, paper)] = exploration_tracker['paper'][paper]
+        
+    elif current_node[0] == TOPIC:
+        sub_edge_index, _ = expand_1_hop_edge_index(data['paper', 'about', 'topic'].edge_index, current_node[1], flow='source_to_target')
+        for paper in sub_edge_index[0].tolist():
+            if color_tracker['paper'][paper] == color:
+                nodes[(PAPER, paper)] = exploration_tracker['paper'][paper]
+ 
+    if nodes:
+        min_exploration = min(nodes.values())
+        min_nodes = {k for k, v in nodes.items() if v == min_exploration}
+        selected_node = random.choice(min_nodes)
+        exploration_tracker[selected_node[0]][selected_node[1]] += 1
+        if not color:
+            color_tracker[selected_node[0]][selected_node[1]] = 'green'
+            
+            if current_node[0] == PAPER:
+                if selected_node[0] == PAPER:
+                    expanded_edge[CITES].append([current_node[1], selected_node[1]])
+                elif selected_node[0] == AUTHOR:
+                    expanded_edge[WRITES].append([selected_node[1], current_node[1]])
+                elif selected_node[0] == TOPIC:
+                    expanded_edge[ABOUT].append([current_node[1], selected_node[1]])
+                    
+            elif current_node[0] == AUTHOR:
+                expanded_edge[WRITES].append([current_node[1], selected_node[1]])
+                
+            elif current_node[0] == TOPIC:
+                expanded_edge[ABOUT].append([selected_node[1], current_node[1]])
+        return selected_node
+    else:
+        return None
+
+def infosphere_noisy_expansion(full_graph, seeds_graph, p1, p2, p3, f, num_seeds, author_node):
+    expanded_edge = []
+    p = {
+        'orange': p1,
+        'green': p2
+    }
+    node_to_add = num_seeds * f
+    
+    color_tracker = {
+        'paper': [None] * full_graph['paper'].num_nodes,
+        'author': [None] * full_graph['author'].num_nodes,
+        'topic': [None] * full_graph['topic'].num_nodes
+    }
+    
+    exploration_tracker = {
+        'paper': [0] * full_graph['paper'].num_nodes,
+        'author': [0] * full_graph['author'].num_nodes,
+        'topic': [0] * full_graph['topic'].num_nodes
+    }
+	
+    set_color(seeds_graph, 'orange', color_tracker)  # Color all seeds in the infosphere.
+
+    current_node = (AUTHOR, author_node)
+    current_color = 'orange'
+
+    while node_to_add:
+        if random.randint() > p[current_color]:
+            # p = True, follow the current_color path.
+            new_node = expand_seeds(current_node, current_color, full_graph, color_tracker, exploration_tracker, expanded_edge)
+            if new_node:
+                current_node = new_node
+            else:
+                # No current_color nodes available, change direction.
+                new_node = expand_seeds(current_node, None, full_graph, color_tracker, exploration_tracker, expanded_edge)
+                if new_node:
+                    node_to_add -= 1
+                    current_node = new_node
+                    current_color = 'green'
+                else:
+                    # This is impossible, the graph is connected
+                    pass
+        else:
+            # p = False, change direction.
+            new_node = expand_seeds(current_node, None, full_graph, color_tracker, exploration_tracker, expanded_edge)
+            if new_node:
+                node_to_add -= 1
+                current_node = new_node
+                current_color = 'green'
+            else:
+                # No white nodes available, , follow the current_color path.
+                new_node = expand_seeds(current_node, current_color, full_graph, color_tracker, exploration_tracker, expanded_edge)
+                if new_node:
+                    current_node = new_node
+                else:
+                    # This is impossible, the graph is connected
+                    pass
+                    
+        if random.randint() > p[current_color] > p3:
+            current_node = (AUTHOR, author_node)
+            current_color = 'orange'
+     
+    return expanded_edge
