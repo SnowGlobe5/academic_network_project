@@ -53,8 +53,9 @@ def finalize_infosphere(fold, year, keep_edges, p1, p2, p3, f):
                     num_seeds = len(part_dict_infosphere[i])
 
                     if part_dict_infosphere[i]:
-                        print(author_edge_list)
-                        expansion = anp_expansion.infosphere_noisy_expansion(data, [author_edge_list[0].tolist(), author_edge_list[1].tolist(), author_edge_list[2].tolist()], p1, p2, p3, f, num_seeds, part_dict_infosphere[i][0][0][1][0])
+                        print(part_dict_infosphere[i][0][-1][1][0])
+                        
+                        expansion = anp_expansion.infosphere_noisy_expansion(data, [author_edge_list[0].tolist(), author_edge_list[1].tolist(), author_edge_list[2].tolist()], p1, p2, p3, f, num_seeds, part_dict_infosphere[i][0][-1][1][0])
 
                         if expansion:
                         # if anp_expansion.expand_infosphere(sub_graph, author_edge_list, N_NODE, N_CHILDREN, anp_expansion.random_selection_policy, anp_expansion.random_expansion_policy):
