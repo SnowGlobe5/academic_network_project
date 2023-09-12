@@ -7,7 +7,7 @@ N_NODE = 0
 N_CHILDREN = 0
 
 
-def json_to_edge_list(infosphere):
+def json_to_edge_list(infosphere, paper_limit):
     infosphere_edge_list = []
     for author_infosphere in infosphere:
         author_infosphere_edge_list = [
@@ -18,11 +18,14 @@ def json_to_edge_list(infosphere):
             for element in path:
                 match element[0]:
                     case 'cites':
-                        author_infosphere_edge_list[CITES] = torch.cat((author_infosphere_edge_list[CITES], torch.Tensor([[element[1][0]],[element[1][1]]]).to(torch.int64).to(DEVICE)), dim=1)
+                        if element[1][0] <= paper_limit or element[1][1] <= paper_limit:
+                            author_infosphere_edge_list[CITES] = torch.cat((author_infosphere_edge_list[CITES], torch.Tensor([[element[1][0]],[element[1][1]]]).to(torch.int64).to(DEVICE)), dim=1)
                     case 'writes':
-                        author_infosphere_edge_list[WRITES] = torch.cat((author_infosphere_edge_list[WRITES], torch.Tensor([[element[1][0]],[element[1][1]]]).to(torch.int64).to(DEVICE)), dim=1)
+                        if element[1][1] <= paper_limit:
+                                author_infosphere_edge_list[WRITES] = torch.cat((author_infosphere_edge_list[WRITES], torch.Tensor([[element[1][0]],[element[1][1]]]).to(torch.int64).to(DEVICE)), dim=1)
                     case 'about':
-                        author_infosphere_edge_list[ABOUT] = torch.cat((author_infosphere_edge_list[ABOUT], torch.Tensor([[element[1][0]],[element[1][1]]]).to(torch.int64).to(DEVICE)), dim=1)
+                        if element[1][0] <= paper_limit:
+                            author_infosphere_edge_list[ABOUT] = torch.cat((author_infosphere_edge_list[ABOUT], torch.Tensor([[element[1][0]],[element[1][1]]]).to(torch.int64).to(DEVICE)), dim=1)
         infosphere_edge_list.append(author_infosphere_edge_list)
     return infosphere_edge_list
 
@@ -41,6 +44,18 @@ def finalize_infosphere(fold, year, keep_edges, p1, p2, p3, f):
     data = dataset[0]
     sub_graph, _, _, _ = anp_filter_data(data, root=root, folds=fold, max_year=year, keep_edges=keep_edges)
     sub_graph = sub_graph.to(DEVICE)
+    
+    anp_expansion.color_tracker = [
+        [0] * sub_graph['paper'].num_nodes,
+        [0] * sub_graph['author'].num_nodes,
+        [0] * sub_graph['topic'].num_nodes
+    ]
+
+    anp_expansion.exploration_tracker = [
+        [0] * sub_graph['paper'].num_nodes,
+        [0] * sub_graph['author'].num_nodes,
+        [0] * sub_graph['topic'].num_nodes
+    ]
 
     try:
         i = 0
@@ -48,14 +63,19 @@ def finalize_infosphere(fold, year, keep_edges, p1, p2, p3, f):
             print(f"Part {i}")
             with open(f"ANP_DATA/computed_infosphere/infosphere_{fold_string}_{year}_{i}.json", 'r') as json_file:
                 part_dict_infosphere =  json.load(json_file)
-                part_tensor_infosphere = json_to_edge_list(part_dict_infosphere)
+                part_tensor_infosphere = json_to_edge_list(part_dict_infosphere, sub_graph['paper'].num_nodes)
+                
+                time = datetime.now()
+                tot = len(part_tensor_infosphere)
+                
                 for i, author_edge_list in enumerate(part_tensor_infosphere):
+                    if not i % 100:
+                        print(f"author edge processed: {i}/{tot} - {i/tot*100}% - {str(datetime.now() - time)}")
+                    
                     num_seeds = len(part_dict_infosphere[i])
-
-                    if part_dict_infosphere[i]:
-                        print(part_dict_infosphere[i][0][-1][1][0])
-                        
-                        expansion = anp_expansion.infosphere_noisy_expansion(data, [author_edge_list[0].tolist(), author_edge_list[1].tolist(), author_edge_list[2].tolist()], p1, p2, p3, f, num_seeds, part_dict_infosphere[i][0][-1][1][0])
+                    
+                    if part_dict_infosphere[i]:                       
+                        expansion = anp_expansion.infosphere_noisy_expansion(sub_graph, author_edge_list, p1, p2, p3, f, num_seeds, part_dict_infosphere[i][0][-1][1][0])
 
                         if expansion:
                         # if anp_expansion.expand_infosphere(sub_graph, author_edge_list, N_NODE, N_CHILDREN, anp_expansion.random_selection_policy, anp_expansion.random_expansion_policy):
@@ -74,5 +94,7 @@ def finalize_infosphere(fold, year, keep_edges, p1, p2, p3, f):
                 
     except FileNotFoundError:
         torch.save(authors_infosphere_edge_list, f"ANP_DATA/computed_infosphere/infosphere_{fold_string}_{year}_noisy.pt")
+        
+finalize_infosphere([0, 1, 2, 3, 4], 2019, True, 0.5, 0.5, 0.5, 2)
         
             
