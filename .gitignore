@@ -164,4 +164,5 @@ ANP_MODELS/*
 .vscode/
 data/*
 output/*
+output_old/*
 graph_gen.py
