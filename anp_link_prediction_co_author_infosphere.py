@@ -317,10 +317,17 @@ confusion_matrix = {
     'tn': 0
 }
 
-for epoch in range(first_epoch, 31):
+for epoch in range(first_epoch, 21):
     # Train the model
     loss = train()
 
+    confusion_matrix = {
+        'tp': 0,
+        'fp': 0,
+        'fn': 0,
+        'tn': 0
+    }
+    
     # Test the model
     val_mse, val_acc, loss_val = test(val_loader)
 
