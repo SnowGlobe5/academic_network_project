@@ -11,10 +11,17 @@ from torch_geometric.nn import SAGEConv, to_hetero
 from tqdm import tqdm
 
 BATCH_SIZE = 4096
-YEAR = 2020
+YEAR = 2019
 
 ROOT = "ANP_DATA"
 PATH = "ANP_MODELS/1_next_topic_prediction/"
+
+DEVICE=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+if sys.argv[1] == 'True':
+    use_link_split = True
+else:
+    use_link_split = False
 
 #TODO remove
 import shutil
@@ -32,8 +39,8 @@ fold_string = [str(x) for x in fold]
 fold_string = '_'.join(fold_string)
 
 # Get infosphere
-if os.path.exists(f"{ROOT}/computed_infosphere/infosphere_{fold_string}_{YEAR-1}_expanded.pt"):
-    infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/infosphere_{fold_string}_{YEAR-1}_expanded.pt")
+if os.path.exists(f"{ROOT}/computed_infosphere/infosphere_{fold_string}_{YEAR}_expanded.pt"):
+    infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/infosphere_{fold_string}_{YEAR}_expanded.pt")
     data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(infosphere_edges[CITES])
     data['paper', 'infosphere_cites', 'paper'].edge_label = None
     data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(infosphere_edges[WRITES])
@@ -41,7 +48,7 @@ if os.path.exists(f"{ROOT}/computed_infosphere/infosphere_{fold_string}_{YEAR-1}
     data['paper', 'infosphere_about', 'topic'].edge_index = coalesce(infosphere_edges[ABOUT])
     data['paper', 'infosphere_about', 'topic'].edge_label = None
 else:
-    raise Exception(f"infosphere_{fold_string}_{YEAR}_expanded.pt not found!!")
+    raise Exception(f"infosphere_{fold_string}_{YEAR-1}_expanded.pt not found!!")
 
 
 # Use already existing next-topic edge (if exist)
@@ -60,62 +67,97 @@ data['paper'].x = data['paper'].x.to(torch.float)
 data = T.ToUndirected()(data)
 data = data.to('cpu')
 
-
-# Train
-# Filter training data
-sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3], max_year=YEAR, keep_edges=False)    
-#sub_graph_train = sub_graph_train.to(DEVICE)
-
-transform = T.RandomLinkSplit(
-    num_val=0,
+if use_link_split == True:
+    sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3, 4], max_year=YEAR, keep_edges=False)
+    transform = T.RandomLinkSplit(
+    num_val=0.1,
     num_test=0,
-    #disjoint_train_ratio=0.3,
-    #neg_sampling_ratio=2.0,
-    neg_sampling_ratio=1.0,
-    add_negative_train_samples=True,
+    disjoint_train_ratio=0.3,
+    neg_sampling_ratio=2.0,
+    add_negative_train_samples=False,
     edge_types=('author', 'difference_next_topic', 'topic')
-)
-train_data, _, _= transform(sub_graph_train)
+    )
+    train_data, val_data, _= transform(data)
+
+    # Define seed edges:
+    edge_label_index = train_data['author', 'difference_next_topic', 'topic'].edge_label_index
+    edge_label = train_data['author', 'difference_next_topic', 'topic'].edge_label
+    train_loader = LinkNeighborLoader(
+        data=train_data,
+        num_neighbors=[20, 10],
+        neg_sampling_ratio=2.0,
+        edge_label_index=(('author', 'difference_next_topic', 'topic'), edge_label_index),
+        edge_label=edge_label,
+        batch_size=256,
+        shuffle=True,
+    )
+
+    edge_label_index = val_data['author', 'difference_next_topic', 'topic'].edge_label_index
+    edge_label = val_data['author', 'difference_next_topic', 'topic'].edge_label
+    val_loader = LinkNeighborLoader(
+        data=val_data,
+        num_neighbors=[20, 10],
+        edge_label_index=(('author', 'difference_next_topic', 'topic'), edge_label_index),
+        edge_label=edge_label,
+        batch_size=3 * 256,
+        shuffle=False,
+    )
+else:
+    # Train
+    # Filter training data
+    sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3], max_year=YEAR, keep_edges=False)    
+    #sub_graph_train = sub_graph_train.to(DEVICE)
+
+    transform = T.RandomLinkSplit(
+        num_val=0,
+        num_test=0,
+        #disjoint_train_ratio=0.3,
+        #neg_sampling_ratio=2.0,
+        neg_sampling_ratio=1.0,
+        add_negative_train_samples=True,
+        edge_types=('author', 'difference_next_topic', 'topic')
+    )
+    train_data, _, _= transform(sub_graph_train)
 
 
-# Validation
-# Filter validation data
-sub_graph_val, _, _, _ = anp_filter_data(data, root=ROOT, folds=[4], max_year=YEAR, keep_edges=False)
-#sub_graph_val = sub_graph_val.to(DEVICE)
+    # Validation
+    # Filter validation data
+    sub_graph_val, _, _, _ = anp_filter_data(data, root=ROOT, folds=[4], max_year=YEAR, keep_edges=False)
+    #sub_graph_val = sub_graph_val.to(DEVICE)
 
-transform = T.RandomLinkSplit(
-    num_val=0,
-    num_test=0,
-    #neg_sampling_ratio=2.0,
-    neg_sampling_ratio=1.0,
-    add_negative_train_samples=True,
-    edge_types=('author', 'difference_next_topic', 'topic')
-)
-val_data, _, _= transform(sub_graph_val)
+    transform = T.RandomLinkSplit(
+        num_val=0,
+        num_test=0,
+        #neg_sampling_ratio=2.0,
+        neg_sampling_ratio=1.0,
+        add_negative_train_samples=True,
+        edge_types=('author', 'difference_next_topic', 'topic')
+    )
+    val_data, _, _= transform(sub_graph_val)
 
-# Define seed edges:
-edge_label_index = train_data['author', 'difference_next_topic', 'topic'].edge_label_index
-edge_label = train_data['author', 'difference_next_topic', 'topic'].edge_label
-train_loader = LinkNeighborLoader(
-    data=train_data,
-    num_neighbors=[20, 10],
-    #neg_sampling_ratio=2.0,
-    edge_label_index=(('author', 'difference_next_topic', 'topic'), edge_label_index),
-    edge_label=edge_label,
-    batch_size=1024,
-    shuffle=True,
-)
+    # Define seed edges:
+    edge_label_index = train_data['author', 'difference_next_topic', 'topic'].edge_label_index
+    edge_label = train_data['author', 'difference_next_topic', 'topic'].edge_label
+    train_loader = LinkNeighborLoader(
+        data=train_data,
+        num_neighbors=[20, 10],
+        #neg_sampling_ratio=2.0,
+        edge_label_index=(('author', 'difference_next_topic', 'topic'), edge_label_index),
+        edge_label=edge_label,
+        batch_size=1024,
+        shuffle=True,
+    )
 
-edge_label_index = val_data['author', 'difference_next_topic', 'topic'].edge_label_index
-edge_label = val_data['author', 'difference_next_topic', 'topic'].edge_label
-val_loader = LinkNeighborLoader(
-    data=val_data,
-    num_neighbors=[20, 10],
-    edge_label_index=(('author', 'difference_next_topic', 'topic'), edge_label_index),
-    edge_label=edge_label,
-    batch_size=1024,
-    shuffle=False,
-)
+    edge_label_index = val_data['author', 'difference_next_topic', 'topic'].edge_label_index
+    edge_label = val_data['author', 'difference_next_topic', 'topic'].edge_label
+    val_loader = LinkNeighborLoader(
+        data=val_data,
+        num_neighbors=[20, 10],
+        edge_label_index=(('author', 'difference_next_topic', 'topic'), edge_label_index),
+        edge_label=edge_label,
+        batch_size=1024,
+        shuffle=False,
+    )
 
 # Delete the next-topic edge (data will be used for data.metadata())
 del data['author', 'difference_next_topic', 'topic']
@@ -158,7 +200,7 @@ class EdgeDecoder(torch.nn.Module):
 
     def forward(self, z_dict, edge_label_index):
         row, col = edge_label_index
-        z = torch.cat([z_dict['author'][row], z_dict['author'][col]], dim=-1)
+        z = torch.cat([z_dict['author'][row], z_dict['topic'][col]], dim=-1)
 
         z = self.lin1(z).relu()
         z = self.lin2(z).relu()
