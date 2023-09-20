@@ -37,10 +37,11 @@ data = dataset[0]
 fold = [0, 1, 2, 3, 4] #TODO param
 fold_string = [str(x) for x in fold]
 fold_string = '_'.join(fold_string)
+name_infosphere = f"1_infosphere_{fold_string}_{YEAR}_noisy.pt"
 
 # Get infosphere
-if os.path.exists(f"{ROOT}/computed_infosphere/infosphere_{fold_string}_{YEAR}_expanded.pt.old"):
-    infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/infosphere_{fold_string}_{YEAR}.pt")
+if os.path.exists(f"{ROOT}/computed_infosphere/{name_infosphere}"):
+    infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{name_infosphere}")
     data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(infosphere_edges[CITES])
     data['paper', 'infosphere_cites', 'paper'].edge_label = None
     data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(infosphere_edges[WRITES])
@@ -48,7 +49,7 @@ if os.path.exists(f"{ROOT}/computed_infosphere/infosphere_{fold_string}_{YEAR}_e
     data['paper', 'infosphere_about', 'topic'].edge_index = coalesce(infosphere_edges[ABOUT])
     data['paper', 'infosphere_about', 'topic'].edge_label = None
 else:
-    raise Exception(f"infosphere_{fold_string}_{YEAR}_expanded.pt not found!!")
+    raise Exception(f"{name_infosphere} not found!!")
 
 
 # Use already existing co-author edge (if exist)
