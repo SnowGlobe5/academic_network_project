@@ -23,6 +23,8 @@ if sys.argv[1] == 'True':
 else:
     use_link_split = False
 
+number = sys.argv[2]
+    
 #TODO remove
 import shutil
 try:
@@ -37,7 +39,7 @@ data = dataset[0]
 fold = [0, 1, 2, 3, 4] #TODO param
 fold_string = [str(x) for x in fold]
 fold_string = '_'.join(fold_string)
-name_infosphere = f"1_infosphere_{fold_string}_{YEAR}_noisy.pt"
+name_infosphere = f"{number}_infosphere_{fold_string}_{YEAR}_noisy.pt"
 
 # Get infosphere
 if os.path.exists(f"{ROOT}/computed_infosphere/{name_infosphere}"):
@@ -269,6 +271,10 @@ def train():
 def test(loader):
     model.eval()
     total_examples = total_mse = total_correct = total_loss = 0
+    confusion_matrix['tn'] = 0
+    confusion_matrix['fn'] = 0
+    confusion_matrix['tp'] = 0
+    confusion_matrix['fp'] = 0
     for i, batch in enumerate(tqdm(loader)):
         batch = batch.to(DEVICE)
         
@@ -321,14 +327,6 @@ confusion_matrix = {
 for epoch in range(first_epoch, 21):
     # Train the model
     loss = train()
-
-    confusion_matrix = {
-        'tp': 0,
-        'fp': 0,
-        'fn': 0,
-        'tn': 0
-    }
-    
     # Test the model
     val_mse, val_acc, loss_val = test(val_loader)
 

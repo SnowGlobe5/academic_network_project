@@ -1,0 +1,7 @@
+#!/bin/bash
+
+python3 anp_link_prediction_co_author_infosphere.py False 1
+python3 anp_link_prediction_co_author_infosphere.py False 2
+python3 anp_link_prediction_co_author_infosphere.py False 3
+python3 anp_link_prediction_co_author_infosphere.py False 4
+python3 anp_link_prediction_co_author_infosphere.py False 5
