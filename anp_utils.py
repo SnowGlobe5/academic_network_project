@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import json
 import sys
 from datetime import datetime
@@ -110,7 +111,18 @@ def anp_filter_data(data, root, folds, max_year, keep_edges):
         subset_dict_next_year['paper'] = torch.tensor(papers_list_year)
         return data.subgraph(subset_dict), data.subgraph(subset_dict_next_year), sorted(authors_filter_list), papers_list_next_year
     
-
+def anp_simple_filter_data(data, root, folds, max_year):
+        subset_dict = {}
+        authors_filter_list = []
+        for fold in folds:
+            df_auth = pd.read_csv(f"{root}/split/authors_{fold}.csv")
+            authors_filter_list.extend(df_auth.values.flatten())
+        subset_dict['author'] = torch.tensor(authors_filter_list)   
+        mask = data['paper'].x[0] <= max_year
+        papers_list_year = np.where(mask)
+        return data.subgraph(subset_dict)
+    
+    
 def generate_co_author_edge_year(data, year):
     years = data['paper'].x[:, 0]
     mask = years == year

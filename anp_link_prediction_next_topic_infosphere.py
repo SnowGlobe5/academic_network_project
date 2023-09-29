@@ -22,6 +22,7 @@ if sys.argv[1] == 'True':
     use_link_split = True
 else:
     use_link_split = False
+lr = float(sys.argv[2])
 
 #TODO remove
 import shutil
@@ -70,7 +71,7 @@ data = data.to('cpu')
 if use_link_split == True:
     sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3, 4], max_year=YEAR, keep_edges=False)
     transform = T.RandomLinkSplit(
-    num_val=0.1,
+    num_val=0.2,
     num_test=0,
     disjoint_train_ratio=0.3,
     neg_sampling_ratio=2.0,
@@ -105,7 +106,7 @@ if use_link_split == True:
 else:
     # Train
     # Filter training data
-    sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3], max_year=YEAR, keep_edges=False)    
+    sub_graph_train= anp_simple_filter_data(data, root=ROOT, folds=[0, 1, 2, 3], max_year=YEAR)    
     #sub_graph_train = sub_graph_train.to(DEVICE)
 
     transform = T.RandomLinkSplit(
@@ -122,7 +123,7 @@ else:
 
     # Validation
     # Filter validation data
-    sub_graph_val, _, _, _ = anp_filter_data(data, root=ROOT, folds=[4], max_year=YEAR, keep_edges=False)
+    sub_graph_val= anp_simple_filter_data(data, root=ROOT, folds=[4], max_year=YEAR)  
     #sub_graph_val = sub_graph_val.to(DEVICE)
 
     transform = T.RandomLinkSplit(
@@ -233,7 +234,7 @@ else:
     with open(PATH + 'info.json', 'w') as json_file:
         json.dump([], json_file)
     first_epoch = 1
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 embedding_author = torch.nn.Embedding(data["author"].num_nodes, 32).to(DEVICE)
 embedding_topic = torch.nn.Embedding(data["topic"].num_nodes, 32).to(DEVICE)
 
@@ -304,7 +305,7 @@ def test(loader):
 
 
 # Initialize optimizer
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
 training_loss_list = []
 validation_loss_list = []
@@ -338,6 +339,6 @@ for epoch in range(first_epoch, 51):
     accuracy_list.append(val_acc)
     
     # Print epoch results
-    print(f'Epoch: {epoch:02d}, Loss: {loss:.4f}, RMSE: {val_mse:.4f}, Accuracy: {val_acc:.4f}')
+    print(f'Epoch: {epoch:02d}, Loss: {loss:.4f} - {loss_val:.4f} RMSE: {val_mse:.4f}, Accuracy: {val_acc:.4f}')
  
 generate_graph (training_loss_list, validation_loss_list, accuracy_list, confusion_matrix)
