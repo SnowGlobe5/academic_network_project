@@ -104,4 +104,5 @@ def finalize_infosphere(fold, year, keep_edges, p1, p2, p3, f, limits, split, cu
     except FileNotFoundError:
         torch.save(authors_infosphere_edge_list, f"ANP_DATA/computed_infosphere/infosphere_{fold_string}_{year}_noisy_{limits[0]}_{limits[1]}_{split}.pt")
                 
-            
+
+#finalize_infosphere([0, 1, 2, 3, 4], 2019, True, 0.5, 0.5, 0.5, 2, [0, 0], 1, 0)
