@@ -165,9 +165,9 @@ def set_color(edges, color, color_tracker, node_list):
             node_list[TOPIC].append(topic)
 
 
-def expand_seeds(current_node, color, data, color_tracker, exploration_tracker, seeds_edges, expanded_edges, node_list, last_node, device):
+def expand_seeds(current_node, color, data, color_tracker, exploration_tracker, seeds_edges, expanded_edges, node_list, last_node, device, node_to_add):
     nodes = {}
-    if not color:
+    if WHITE in color:
         if current_node[0] == PAPER:
             sub_edge_index, _ = expand_1_hop_edge_index(data['paper', 'cites', 'paper'].edge_index, current_node[1], flow='target_to_source')
             for paper in sub_edge_index[1].tolist():
@@ -196,7 +196,7 @@ def expand_seeds(current_node, color, data, color_tracker, exploration_tracker, 
                 if color_tracker[PAPER][paper] in color and (last_node[0] != PAPER or last_node[1] != paper):
                     nodes[(PAPER, paper)] = exploration_tracker[PAPER][paper]
     else:
-        if color == ORANGE:
+        if ORANGE in color:
             edges = seeds_edges
         else:
             edges = expanded_edges
@@ -235,9 +235,10 @@ def expand_seeds(current_node, color, data, color_tracker, exploration_tracker, 
         min_nodes = [k for k, v in nodes.items() if v == min_exploration]
         selected_node = random.choice(min_nodes)
         exploration_tracker[selected_node[0]][selected_node[1]] += 1
-        if not color:
+        if color_tracker[selected_node[0]][selected_node[1]] == WHITE:
             color_tracker[selected_node[0]][selected_node[1]] = GREEN
             node_list[selected_node[0]].append(selected_node[1])
+            node_to_add[0] -= 1
 
             if current_node[0] == PAPER:
                 if selected_node[0] == PAPER:
@@ -274,7 +275,7 @@ def infosphere_noisy_expansion(full_graph, seeds_edges, p1, p2, p3, f, num_seeds
     node_list = [[], [], []]
     
     p = [0, p1, p2]
-    node_to_add = num_seeds * f
+    node_to_add = [num_seeds * f]
     
 	
     set_color(seeds_edges, ORANGE, color_tracker, node_list)  # Color all seeds in the infosphere.
@@ -285,10 +286,10 @@ def infosphere_noisy_expansion(full_graph, seeds_edges, p1, p2, p3, f, num_seeds
     
     count_path_len = 0
 
-    while node_to_add:
+    while node_to_add[0]:
         if random.random() > p[current_color]:
             # p = True, follow the current_color path.
-            new_node = expand_seeds(current_node, [current_color], full_graph, color_tracker, exploration_tracker, seeds_edges, expanded_edges, node_list, last_node, device)
+            new_node = expand_seeds(current_node, [current_color], full_graph, color_tracker, exploration_tracker, seeds_edges, expanded_edges, node_list, last_node, device, node_to_add)
             if new_node:
                 last_node = current_node
                 current_node = new_node
@@ -299,15 +300,15 @@ def infosphere_noisy_expansion(full_graph, seeds_edges, p1, p2, p3, f, num_seeds
                     color = [GREEN, WHITE]
                 else:
                     color = [WHITE]
-                new_node = expand_seeds(current_node, color, full_graph, color_tracker, exploration_tracker, seeds_edges, expanded_edges, node_list, last_node, device)
+                new_node = expand_seeds(current_node, color, full_graph, color_tracker, exploration_tracker, seeds_edges, expanded_edges, node_list, last_node, device, node_to_add)
                 if new_node:
-                    node_to_add -= 1
+                    #node_to_add -= 1
                     last_node = current_node
                     current_node = new_node
                     current_color = GREEN
                     count_path_len = 0
                 else:
-                    node_to_add -= 1
+                    node_to_add[0] -= 1
                     count_path_len = 7
         else:
             # p = False, change direction.
@@ -315,22 +316,22 @@ def infosphere_noisy_expansion(full_graph, seeds_edges, p1, p2, p3, f, num_seeds
                 color = [GREEN, WHITE]
             else:
                 color = [WHITE]
-            new_node = expand_seeds(current_node, color, full_graph, color_tracker, exploration_tracker, seeds_edges, expanded_edges, node_list, last_node, device)
+            new_node = expand_seeds(current_node, color, full_graph, color_tracker, exploration_tracker, seeds_edges, expanded_edges, node_list, last_node, device, node_to_add)
             if new_node:
-                node_to_add -= 1
+                #node_to_add -= 1
                 last_node = current_node
                 current_node = new_node
                 current_color = GREEN
                 count_path_len = 0
             else:
                 # No white nodes available, , follow the current_color path.
-                new_node = expand_seeds(current_node, [current_color], full_graph, color_tracker, exploration_tracker, seeds_edges, expanded_edges, node_list, last_node, device)
+                new_node = expand_seeds(current_node, [current_color], full_graph, color_tracker, exploration_tracker, seeds_edges, expanded_edges, node_list, last_node, device, node_to_add)
                 if new_node:
                     last_node = current_node
                     current_node = new_node
                     count_path_len += 1
                 else:
-                    node_to_add -= 1
+                    node_to_add[0] -= 1
                     count_path_len = 7
                     
         if random.random() > p3 or count_path_len > 7:
