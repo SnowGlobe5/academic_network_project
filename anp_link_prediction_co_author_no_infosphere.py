@@ -16,7 +16,7 @@ YEAR = 2019
 ROOT = "ANP_DATA"
 PATH = "ANP_MODELS/1_co_author_prediction/"
 
-DEVICE=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+DEVICE=torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 if sys.argv[1] == 'True':
     use_link_split = True
@@ -168,12 +168,12 @@ class GNNEncoder(torch.nn.Module):
         self.conv2 = SAGEConv((-1, -1), out_channels)
         self.conv3 = SAGEConv((-1, -1), out_channels)
         self.conv4 = SAGEConv((-1, -1), out_channels)
-
+        
     def forward(self, x, edge_index):
         x = self.conv1(x, edge_index).relu()
         x = self.conv2(x, edge_index).relu()
-        x = self.conv4(x, edge_index).relu()
-        x = self.conv3(x, edge_index)
+        x = self.conv3(x, edge_index).relu()
+        x = self.conv4(x, edge_index)
         return x
 
 
@@ -181,16 +181,13 @@ class EdgeDecoder(torch.nn.Module):
     def __init__(self, hidden_channels):
         super().__init__()
         self.lin1 = Linear(2 * hidden_channels, hidden_channels)
-        self.lin2 = Linear(hidden_channels, hidden_channels)
-        self.lin3 = Linear(hidden_channels, 1)
-
+        self.lin2 = Linear(hidden_channels, 1)
     def forward(self, z_dict, edge_label_index):
         row, col = edge_label_index
         z = torch.cat([z_dict['author'][row], z_dict['author'][col]], dim=-1)
 
         z = self.lin1(z).relu()
-        z = self.lin2(z).relu()
-        z = self.lin3(z)
+        z = self.lin2(z)
         return z.view(-1)
 
 
@@ -238,7 +235,7 @@ def train():
         optimizer.zero_grad()
         pred = model(batch.x_dict, batch.edge_index_dict, edge_label_index)
         target = edge_label
-        loss = F.binary_cross_entropy_with_logits(pred, target)
+        loss = weighted_mse_loss(pred, target)
         loss.backward()
         optimizer.step()
         total_loss += float(loss) * pred.numel()
@@ -263,10 +260,10 @@ def test(loader):
         batch['topic'].x = embedding_topic(batch['topic'].n_id)
 
         pred = model(batch.x_dict, batch.edge_index_dict, edge_label_index)
-        pred = pred.clamp(min=0, max=1)
         target = edge_label
+        loss = weighted_mse_loss(pred, target)
+        pred = pred.clamp(min=0, max=1)
         rmse = F.mse_loss(pred, target).sqrt()
-        loss = F.binary_cross_entropy_with_logits(pred, target)
         total_mse += rmse
         total_loss += float(loss) * pred.numel()
         total_examples += pred.numel()
@@ -300,7 +297,7 @@ confusion_matrix = {
     'tn': 0
 }
 
-for epoch in range(first_epoch, 11):
+for epoch in range(first_epoch, 21):
     # Train the model
     loss = train()
 
@@ -323,5 +320,5 @@ for epoch in range(first_epoch, 11):
     
     # Print epoch results
     print(f'Epoch: {epoch:02d}, Loss: {loss:.4f} - {loss_val:.4f} RMSE: {val_mse:.4f}, Accuracy: {val_acc:.4f}')
-    
 generate_graph (training_loss_list, validation_loss_list, accuracy_list, confusion_matrix)
+    

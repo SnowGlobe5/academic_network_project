@@ -15,6 +15,8 @@ YEAR = 2019
 ROOT = "ANP_DATA"
 PATH = "ANP_MODELS/1_co_author_prediction/"
 
+DEVICE=torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+
 if sys.argv[1] == 'True':
     use_link_split = True
 else:
@@ -51,7 +53,7 @@ if use_link_split == True:
     sub_graph_train= anp_simple_filter_data(data, root=ROOT, folds=[0, 1, 2, 3, 4], max_year=YEAR)    
  
     transform = T.RandomLinkSplit(
-        num_val=0.2,
+        num_val=0.1,
         num_test=0,
         disjoint_train_ratio=0.3,
         neg_sampling_ratio=2.0,
@@ -160,7 +162,7 @@ class GNNEncoder(torch.nn.Module):
         self.conv2 = SAGEConv((-1, -1), out_channels)
         self.conv3 = SAGEConv((-1, -1), out_channels)
         self.conv4 = SAGEConv((-1, -1), out_channels)
-
+        
     def forward(self, x, edge_index):
         x = self.conv1(x, edge_index).relu()
         x = self.conv2(x, edge_index).relu()
@@ -173,18 +175,13 @@ class EdgeDecoder(torch.nn.Module):
     def __init__(self, hidden_channels):
         super().__init__()
         self.lin1 = Linear(2 * hidden_channels, hidden_channels)
-        self.lin2 = Linear(hidden_channels, hidden_channels)
-        self.lin3 = Linear(hidden_channels, hidden_channels)
-        self.lin4 = Linear(hidden_channels, 1)
-
+        self.lin2 = Linear(hidden_channels, 1)
     def forward(self, z_dict, edge_label_index):
         row, col = edge_label_index
         z = torch.cat([z_dict['author'][row], z_dict['author'][col]], dim=-1)
 
         z = self.lin1(z).relu()
-        z = self.lin2(z).relu()
-        z = self.lin3(z).relu()
-        z = self.lin4(z)
+        z = self.lin2(z)
         return z.view(-1)
 
 
@@ -232,10 +229,11 @@ def train():
         optimizer.zero_grad()
         pred = model(batch.x_dict, batch.edge_index_dict, edge_label_index)
         target = edge_label
-        loss = weighted_mse_loss(pred, target, weight)
+        loss = weighted_mse_loss(pred, target)
         loss.backward()
         optimizer.step()
-        total_examples += len(pred)
+        total_loss += float(loss) * pred.numel()
+        total_examples += pred.numel()
         total_loss += float(loss) * len(pred)
 
     return total_loss / total_examples
@@ -257,12 +255,13 @@ def test(loader):
         batch['topic'].x = embedding_topic(batch['topic'].n_id)
 
         pred = model(batch.x_dict, batch.edge_index_dict, edge_label_index)
+        target = edge_label
+        loss = weighted_mse_loss(pred, target)
         pred = pred.clamp(min=0, max=1)
-        target = edge_label.float()
         rmse = F.mse_loss(pred, target).sqrt()
         total_mse += rmse
-        total_loss += float(loss) * len(pred)
-        total_examples += len(pred)
+        total_loss += float(loss) * pred.numel()
+        total_examples += pred.numel()
         total_correct += int((torch.round(pred, decimals=0) == target).sum())
 
         for i in range(len(target)):
@@ -293,7 +292,7 @@ confusion_matrix = {
     'tn': 0
 }
 
-for epoch in range(first_epoch, 101):
+for epoch in range(first_epoch, 31):
     # Train the model
     loss = train()
 
