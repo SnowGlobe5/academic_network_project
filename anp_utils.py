@@ -262,18 +262,44 @@ def generate_graph (training_loss_list, validation_loss_list, accuracy_list, con
     plt.plot(training_loss_list, label='train_loss')
     plt.plot(validation_loss_list,label='val_loss')
     plt.legend()
-    plt.savefig(f'output/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_loss.pdf')
+    plt.savefig(f'output/{sys.argv[0][:-3]}/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_loss.pdf')
     plt.close()
 
     plt.plot(accuracy_list,label='accuracy')
     plt.legend()
-    plt.savefig(f'output/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_accuracy.pdf')
+    plt.savefig(f'output/{sys.argv[0][:-3]}/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_accuracy.pdf')
     plt.close()
+    
+    time = datetime.now()
+    plt.plot(training_loss_list[1:], label='train_loss')
+    plt.plot(validation_loss_list[1:],label='val_loss')
+    plt.legend()
+    plt.savefig(f'output/{sys.argv[0][:-3]}/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_loss2.pdf')
+    plt.close()
+
+    plt.plot(accuracy_list[1:],label='accuracy')
+    plt.legend()
+    plt.savefig(f'output/{sys.argv[0][:-3]}/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_accuracy2.pdf')
+    plt.close()
+    
+    time = datetime.now()
+    plt.plot(training_loss_list[2:], label='train_loss')
+    plt.plot(validation_loss_list[2:],label='val_loss')
+    plt.legend()
+    plt.savefig(f'output/{sys.argv[0][:-3]}/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_loss3.pdf')
+    plt.close()
+
+    plt.plot(accuracy_list[2:],label='accuracy')
+    plt.legend()
+    plt.savefig(f'output/{sys.argv[0][:-3]}/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_accuracy3.pdf')
+    plt.close()
+
 
     array = [[confusion_matrix['tp'], confusion_matrix['fp']],[confusion_matrix['fn'], confusion_matrix['tn']]]
     df_cm = pd.DataFrame(array, index = [i for i in ("POSITIVE", "NEGATIVE")],
                     columns = [i for i in ("POSITIVE", "NEGATIVE")])
     plt.figure(figsize = (10,7))
     sn.heatmap(df_cm, annot=True)
-    plt.savefig(f'output/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_CM.pdf')
+    plt.savefig(f'output/{sys.argv[0][:-3]}/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_CM.pdf')
+    plt.close()
     
