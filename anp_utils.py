@@ -118,8 +118,9 @@ def anp_simple_filter_data(data, root, folds, max_year):
             df_auth = pd.read_csv(f"{root}/split/authors_{fold}.csv")
             authors_filter_list.extend(df_auth.values.flatten())
         subset_dict['author'] = torch.tensor(authors_filter_list)   
-        mask = data['paper'].x[0] <= max_year
-        papers_list_year = np.where(mask)
+        mask = data['paper'].x[:, 0] <= max_year
+        papers_list_year = torch.where(mask)
+        subset_dict['paper'] = papers_list_year[0]
         return data.subgraph(subset_dict)
     
     
@@ -145,9 +146,31 @@ def generate_co_author_edge_year(data, year):
                     src.append(author)
                     dst.append(co_author)
     return torch.tensor([src, dst])
+
+def generate_co_author_edge_year_history(data, year):
+    years = data['paper'].x[:, 0]
+    mask = years <= year
+    papers = torch.where(mask)[0]
+    edge_index = data['author', 'writes', 'paper'].edge_index
+    edge_index = edge_index.to(DEVICE)
+    src = []
+    dst = []
+    dict_tracker = {}
+    time = datetime.now()
+    tot = len(papers)
+    for i, paper in enumerate(papers):
+        if i % 10000 == 0:
+            print(f"papers processed: {i}/{tot} - {i/tot*100}% - {str(datetime.now() - time)}")
+        sub_edge_index, _ = expand_1_hop_edge_index(edge_index, paper, flow='source_to_target')
+        for author in sub_edge_index[0].tolist():
+            for co_author in sub_edge_index[0].tolist():
+                if author != co_author and not dict_tracker.get((author, co_author)):
+                    dict_tracker[(author, co_author)] = True
+                    src.append(author)
+                    dst.append(co_author)
+    return torch.tensor([src, dst])
    
-    
-def generate_difference_co_author_edge_year(data, year, root):
+def generate_difference_co_author_edge_year_single(data, year, root):
     difference_edge_index = torch.tensor([[],[]]).to(torch.int64).to(DEVICE)
     # Use already existing co-author edge (if exist)
     if os.path.exists(f"{root}/processed/co_author_edge{year}.pt"):
@@ -175,6 +198,47 @@ def generate_difference_co_author_edge_year(data, year, root):
         if not next_edge_index[1][i] in current_edge_index[:, mask][1]:
             difference_edge_index = torch.cat((difference_edge_index, torch.Tensor([[next_edge_index[0][i]],[next_edge_index[1][i]]]).to(torch.int64).to(DEVICE)), dim=1)
     
+    return difference_edge_index
+  
+def generate_difference_co_author_edge_year(data, year, root):
+    difference_edge_index = torch.tensor([[],[]]).to(torch.int64).to(DEVICE)
+    # Use already existing co-author edge (if exist)
+    if os.path.exists(f"{root}/processed/co_author_edge{year}_history.pt"):
+        print("Current history co-author edge found!")
+        current_edge_index = torch.load(f"{root}/processed/co_author_edge{year}_history.pt")
+    else:
+        print("Generating current history co-author edge...")
+        current_edge_index =  generate_co_author_edge_year_history(data, year)
+        torch.save(current_edge_index, f"{root}/processed/co_author_edge{year}_history.pt")
+        
+    if os.path.exists(f"{root}/processed/co_author_edge{year+1}.pt"):
+        print("Next co-author edge found!")
+        next_edge_index = torch.load(f"{root}/processed/co_author_edge{year+1}.pt")
+    else:
+        print("Generating next co-author edge...")
+        next_edge_index =  generate_co_author_edge_year(data, year+1)
+        torch.save(next_edge_index, f"{root}/processed/co_author_edge{year+1}.pt")
+    
+    set_src = torch.unique(next_edge_index[0], sorted=True)
+    time = datetime.now()
+    tot = len(set_src)
+    for i, src in enumerate(set_src):
+        if i % 1000 == 0:
+            print(f"author edge processed: {i}/{tot} - {i/tot*100}% - {str(datetime.now() - time)}")
+        
+        mask = current_edge_index[0] == src
+        dst_old = current_edge_index[:, mask][1]
+        
+        mask = next_edge_index[0] == src
+        dst_new = next_edge_index[:, mask][1]
+        
+        diff=dst_new[(dst_new.view(1, -1) != dst_old.view(-1, 1)).all(dim=0)]
+        
+        for dst in diff:
+            difference_edge_index = torch.cat((difference_edge_index, torch.Tensor([[src],[dst]]).to(torch.int64).to(DEVICE)), dim=1)
+            print(dst_old)
+            print(dst_new)
+            print(diff)
     return difference_edge_index
     
     
@@ -236,12 +300,12 @@ def generate_difference_next_topic_edge_year(data, year, root):
     return difference_edge_index
 
    
-def anp_save(model, path, epoch, loss, mse, accuracy):
+def anp_save(model, path, epoch, loss, loss_val, accuracy):
     torch.save(model, path + 'model.pt')
     new = {
         'epoch': epoch,
         'loss': loss,
-        'mse': mse,
+        'mse': loss_val,
         'accuracy': accuracy
     }
     with open(path + 'info.json', 'r') as json_file:
@@ -257,42 +321,43 @@ def anp_load(path):
     return torch.load(path + 'model.pt'), data[-1]["epoch"]
 
 
-def generate_graph (training_loss_list, validation_loss_list, accuracy_list, confusion_matrix):
+def generate_graph (training_loss_list, validation_loss_list, training_accuracy_list, validation_accuracy_list, confusion_matrix):
     time = datetime.now()
     plt.plot(training_loss_list, label='train_loss')
-    plt.plot(validation_loss_list,label='val_loss')
+    plt.plot(validation_loss_list,label='validation_loss')
     plt.legend()
-    plt.savefig(f'output/{sys.argv[0][:-3]}/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_loss.pdf')
+    plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_loss.pdf')
     plt.close()
 
-    plt.plot(accuracy_list,label='accuracy')
+    plt.plot(training_accuracy_list,label='train_accuracy')
+    plt.plot(validation_accuracy_list,label='validation_accuracy')
     plt.legend()
-    plt.savefig(f'output/{sys.argv[0][:-3]}/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_accuracy.pdf')
+    plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_accuracy.pdf')
     plt.close()
     
-    time = datetime.now()
-    plt.plot(training_loss_list[1:], label='train_loss')
-    plt.plot(validation_loss_list[1:],label='val_loss')
-    plt.legend()
-    plt.savefig(f'output/{sys.argv[0][:-3]}/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_loss2.pdf')
-    plt.close()
+    # time = datetime.now()
+    # plt.plot(training_loss_list[1:], label='train_loss')
+    # plt.plot(validation_loss_list[1:],label='val_loss')
+    # plt.legend()
+    # plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_loss2.pdf')
+    # plt.close()
 
-    plt.plot(accuracy_list[1:],label='accuracy')
-    plt.legend()
-    plt.savefig(f'output/{sys.argv[0][:-3]}/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_accuracy2.pdf')
-    plt.close()
+    # plt.plot(accuracy_list[1:],label='accuracy')
+    # plt.legend()
+    # plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_accuracy2.pdf')
+    # plt.close()
     
-    time = datetime.now()
-    plt.plot(training_loss_list[2:], label='train_loss')
-    plt.plot(validation_loss_list[2:],label='val_loss')
-    plt.legend()
-    plt.savefig(f'output/{sys.argv[0][:-3]}/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_loss3.pdf')
-    plt.close()
+    # time = datetime.now()
+    # plt.plot(training_loss_list[2:], label='train_loss')
+    # plt.plot(validation_loss_list[2:],label='val_loss')
+    # plt.legend()
+    # plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_loss3.pdf')
+    # plt.close()
 
-    plt.plot(accuracy_list[2:],label='accuracy')
-    plt.legend()
-    plt.savefig(f'output/{sys.argv[0][:-3]}/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_accuracy3.pdf')
-    plt.close()
+    # plt.plot(accuracy_list[2:],label='accuracy')
+    # plt.legend()
+    # plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_accuracy3.pdf')
+    # plt.close()
 
 
     array = [[confusion_matrix['tp'], confusion_matrix['fp']],[confusion_matrix['fn'], confusion_matrix['tn']]]
@@ -300,6 +365,16 @@ def generate_graph (training_loss_list, validation_loss_list, accuracy_list, con
                     columns = [i for i in ("POSITIVE", "NEGATIVE")])
     plt.figure(figsize = (10,7))
     sn.heatmap(df_cm, annot=True)
-    plt.savefig(f'output/{sys.argv[0][:-3]}/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_CM.pdf')
+    plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_CM.pdf')
     plt.close()
+    
+    value_log = {
+        'training_loss_list': training_loss_list, 
+        'validation_loss_list': validation_loss_list, 
+        'training_accuracy_list': training_accuracy_list, 
+        'validation_accuracy_list': validation_accuracy_list
+    }
+    
+    with open(f'out/log_{time.strftime("%Y%m%d%H%M%S")}.json', 'w', encoding='utf-8') as f:
+        json.dump(value_log, f, ensure_ascii=False, indent=4)
     

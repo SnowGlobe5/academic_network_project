@@ -165,4 +165,7 @@ ANP_MODELS/*
 data/*
 output/*
 output_old/*
+output_bck/*
+out/*
+*.json
 graph_gen.py
