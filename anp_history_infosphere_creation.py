@@ -185,15 +185,15 @@ def create_mask_edge_index(edge_index, specified_edge):
 
 
 def save_infosphere(root, fold, max_year, infosphere, missing_seeds, part, index):
-    infosphere_file = io.open(f"{root}/computed_infosphere/log_{fold}_{max_year}_{part}", "w", encoding="utf-8")
+    infosphere_file = io.open(f"{root}/computed_infosphere/{max_year}/log_{fold}_{max_year}_{part}", "w", encoding="utf-8")
     infosphere_file.write(f"{index}")
     infosphere_file.close()
     
-    infosphere_file = io.open(f"{root}/computed_infosphere/infosphere_{fold}_{max_year}_{part}.json", "w", encoding="utf-8")
+    infosphere_file = io.open(f"{root}/computed_infosphere/{max_year}/infosphere_{fold}_{max_year}_{part}.json", "w", encoding="utf-8")
     infosphere_file.write(json.dumps(infosphere))
     infosphere_file.close()
 
-    missing_seeds_file = io.open(f"{root}/computed_infosphere/missing_seeds_{fold}_{max_year}_{part}.json", "w", encoding="utf-8")
+    missing_seeds_file = io.open(f"{root}/computed_infosphere/{max_year}/missing_seeds_{fold}_{max_year}_{part}.json", "w", encoding="utf-8")
     missing_seeds_file.write(json.dumps(missing_seeds))
     missing_seeds_file.close()
  

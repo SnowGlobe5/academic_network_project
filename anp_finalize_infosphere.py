@@ -61,7 +61,7 @@ def finalize_infosphere(fold, year, keep_edges, p1, p2, p3, f, limits, split, cu
         part = limits[0]
         while part <= limits[1]:
             print(f"Part {part}")
-            with open(f"ANP_DATA/computed_infosphere/infosphere_{fold_string}_{year}_{part}.json", 'r') as json_file:
+            with open(f"ANP_DATA/computed_infosphere/{year}/infosphere_{fold_string}_{year}_{part}.json", 'r') as json_file:
                 part_dict_infosphere =  json.load(json_file)
                 if split is not None:
                     half_info = int(len(part_dict_infosphere) / 2)
@@ -98,11 +98,11 @@ def finalize_infosphere(fold, year, keep_edges, p1, p2, p3, f, limits, split, cu
                         continue
             part += 1
             
-        torch.save(authors_infosphere_edge_list, f"ANP_DATA/computed_infosphere/infosphere_{fold_string}_{year}_noisy_{limits[0]}_{limits[1]}_{split}.pt")
+        torch.save(authors_infosphere_edge_list, f"ANP_DATA/computed_infosphere/{year}/infosphere_{fold_string}_{year}_noisy_{limits[0]}_{limits[1]}_{split}.pt")
                     
                 
     except FileNotFoundError:
-        torch.save(authors_infosphere_edge_list, f"ANP_DATA/computed_infosphere/infosphere_{fold_string}_{year}_noisy_{limits[0]}_{limits[1]}_{split}.pt")
+        torch.save(authors_infosphere_edge_list, f"ANP_DATA/computed_infosphere/{year}/infosphere_{fold_string}_{year}_noisy_{limits[0]}_{limits[1]}_{split}.pt")
                 
 
 #finalize_infosphere([0, 1, 2, 3, 4], 2019, True, 0.5, 0.5, 0.5, 2, [0, 0], 1, 0)

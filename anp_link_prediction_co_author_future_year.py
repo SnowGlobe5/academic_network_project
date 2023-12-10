@@ -14,7 +14,7 @@ BATCH_SIZE = 4096
 YEAR = 2019
 
 ROOT = "ANP_DATA"
-PATH = "ANP_MODELS/1_co_author_prediction_future/"
+PATH = f"ANP_MODELS/1_co_author_prediction_future_{sys.argv[3]}/"
 
 DEVICE=torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
@@ -42,8 +42,8 @@ fold_string = '_'.join(fold_string)
 name_infosphere = f"{number}_infosphere_{fold_string}_{YEAR}_noisy.pt"
 
 # Get infosphere
-if os.path.exists(f"{ROOT}/computed_infosphere/{name_infosphere}"):
-    infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{name_infosphere}")
+if os.path.exists(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}"):
+    infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}")
     data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(infosphere_edges[CITES])
     data['paper', 'infosphere_cites', 'paper'].edge_label = None
     data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(infosphere_edges[WRITES])

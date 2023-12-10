@@ -11,7 +11,7 @@ def build_infosphere(fold, year, number):
             torch.tensor([[],[]]).to(torch.int64).to(DEVICE),
             torch.tensor([[],[]]).to(torch.int64).to(DEVICE)]
     
-    rootdir = "ANP_DATA/computed_infosphere"
+    rootdir = f"ANP_DATA/computed_infosphere/{year}"
     
     fold_string = [str(x) for x in fold]
     fold_string = '_'.join(fold_string)
@@ -31,7 +31,7 @@ def build_infosphere(fold, year, number):
 
                 os.rename(f"{rootdir}/{file}", f"{rootdir}/fragments_{number}/{file}")
         break    
-    torch.save(authors_infosphere_edge_list, f"ANP_DATA/computed_infosphere/{number}_infosphere_{fold_string}_{year}_noisy.pt")
+    torch.save(authors_infosphere_edge_list, f"{rootdir}/{number}_infosphere_{fold_string}_{year}_noisy.pt")
    
 argument = sys.argv[1]
 build_infosphere([0, 1, 2, 3, 4], 2019, argument)                 

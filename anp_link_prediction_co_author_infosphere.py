@@ -43,8 +43,8 @@ fold_string = '_'.join(fold_string)
 name_infosphere = f"{number}_infosphere_{fold_string}_{YEAR}_noisy.pt"
 
 # Get infosphere
-if os.path.exists(f"{ROOT}/computed_infosphere/{name_infosphere}"):
-    infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{name_infosphere}")
+if os.path.exists(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}"):
+    infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}")
     data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(infosphere_edges[CITES])
     data['paper', 'infosphere_cites', 'paper'].edge_label = None
     data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(infosphere_edges[WRITES])
