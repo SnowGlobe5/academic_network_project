@@ -326,13 +326,13 @@ def generate_graph (training_loss_list, validation_loss_list, training_accuracy_
     plt.plot(training_loss_list, label='train_loss')
     plt.plot(validation_loss_list,label='validation_loss')
     plt.legend()
-    plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_loss.pdf')
+    plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_loss{sys.argv[3]}.pdf')
     plt.close()
 
     plt.plot(training_accuracy_list,label='train_accuracy')
     plt.plot(validation_accuracy_list,label='validation_accuracy')
     plt.legend()
-    plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_accuracy.pdf')
+    plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_accuracy{sys.argv[3]}.pdf')
     plt.close()
     
     # time = datetime.now()
@@ -365,7 +365,7 @@ def generate_graph (training_loss_list, validation_loss_list, training_accuracy_
                     columns = [i for i in ("POSITIVE", "NEGATIVE")])
     plt.figure(figsize = (10,7))
     sn.heatmap(df_cm, annot=True)
-    plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_CM.pdf')
+    plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_CM{sys.argv[3]}.pdf')
     plt.close()
     
     value_log = {
