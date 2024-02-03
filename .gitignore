@@ -169,3 +169,4 @@ output_bck/*
 out/*
 *.json
 graph_gen.py
+log*
