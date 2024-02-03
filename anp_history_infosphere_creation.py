@@ -240,10 +240,12 @@ def main():
     mp.set_start_method('spawn', force=True)
     for i in range(n_parts-1):
         #generate_infosphere_part(year, i, delta*i, delta*(i+1))
-        p = mp.Process(target=generate_infosphere_part, args=((year, i, delta*i, delta*(i+1))))
+        if not specific_part or specific_part == i:
+            p = mp.Process(target=generate_infosphere_part, args=((year, i, delta*i, delta*(i+1))))
+            p.start()
+    if not specific_part or specific_part == n_parts-1:
+        p = mp.Process(target=generate_infosphere_part, args=((year, n_parts-1, delta*(n_parts-1), tot)))
         p.start()
-    p = mp.Process(target=generate_infosphere_part, args=((year, n_parts-1, delta*(n_parts-1), tot)))
-    p.start()
 
 
 year = int(sys.argv[1])
@@ -264,6 +266,10 @@ else:
     d_cuda = False
 fold_string = [str(x) for x in n_fold]
 fold_string = '_'.join(fold_string)
+
+specific_part = int(sys.argv[6])
+if specific_part == -1:
+    specific_part = None
     
 if __name__ == "__main__":
     main()
