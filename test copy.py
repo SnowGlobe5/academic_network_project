@@ -126,7 +126,7 @@ class Model(torch.nn.Module):
         z_dict = self.encoder(x_dict, edge_index_dict)
         return self.decoder(z_dict, edge_label_index)
 
-model = torch.load("ANP_MODELS/1_co_author_prediction_future/model.pt")
+model = torch.load("ANP_MODELS/1_co_author_prediction_future_no_info/model.pt")
 embedding_author = torch.nn.Embedding(data["author"].num_nodes, 32).to(DEVICE)
 embedding_topic = torch.nn.Embedding(data["topic"].num_nodes, 32).to(DEVICE)
 
@@ -157,8 +157,8 @@ def test(loader):
             author_1_id = int(batch['author'].id[int(edge_label_index[0][i].item())].item())
             author_2_id = int(batch['author'].id[int(edge_label_index[1][i].item())].item())
             #print(author_json[f"{author_1_id}"]["co-authors"])
-            if not author_json[f"{author_1_id}"]["co-authors"] or not author_json[f"{author_2_id}"]["co-authors"]:
-                 continue
+            # if not author_json[f"{author_1_id}"]["co-authors"] or not author_json[f"{author_2_id}"]["co-authors"]:
+            #      continue
             if target[i].item() == 1:
                 if torch.round(pred, decimals=0)[i].item() == 1:
                     if author_2_id in author_json[f"{author_1_id}"]["co-authors"]:
