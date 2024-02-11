@@ -7,7 +7,7 @@ from torch.nn import Linear
 
 import torch_geometric.transforms as T
 from torch_geometric.nn import SAGEConv, to_hetero
-from anp_dataset import ANPDataset
+from academic_network_project.anp_core.anp_dataset import ANPDataset
 from anp_utils import generate_co_author_edge_year, anp_filter_data
 
 BATCH_SIZE = 4096
@@ -16,7 +16,7 @@ YEAR_VAL = 2020
 
 device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
-root = "ANP_DATA"
+ROOT = "../anp_data"
 
 dataset = ANPDataset(root=root)
 data = dataset[0]

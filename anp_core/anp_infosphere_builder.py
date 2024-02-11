@@ -9,10 +9,10 @@ Functions:
 - build_infosphere: Assemble the infosphere from computed fragments.
 """
 
-import torch
-from anp_utils import *
 import os
 import re
+import torch
+from academic_network_project.anp_core.anp_utils import *
 
 
 def build_infosphere(fold, year, number):
@@ -31,7 +31,7 @@ def build_infosphere(fold, year, number):
     authors_infosphere_edge_list = [torch.tensor([[], []]).to(torch.int64).to(DEVICE),
         torch.tensor([[], []]).to(torch.int64).to(DEVICE), torch.tensor([[], []]).to(torch.int64).to(DEVICE)]
 
-    rootdir = f"ANP_DATA/computed_infosphere/{year}"
+    rootdir = f"anp_data/computed_infosphere/{year}"
 
     fold_string = [str(x) for x in fold]
     fold_string = '_'.join(fold_string)

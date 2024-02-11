@@ -42,9 +42,9 @@ gen(year, fold, True)
 #                 print(f"{item[0]} {number} is {string}")
 
 # # Carica i mapping dai file CSV
-# topic_mapping = load_csv_mapping('ANP_DATA/mapping/topics.csv')
-# author_mapping = load_csv_mapping('ANP_DATA/mapping/authors.csv')
-# paper_mapping = load_csv_mapping('ANP_DATA/mapping/papers.csv')
+# topic_mapping = load_csv_mapping('anp_data/mapping/topics.csv')
+# author_mapping = load_csv_mapping('anp_data/mapping/authors.csv')
+# paper_mapping = load_csv_mapping('anp_data/mapping/papers.csv')
 
 # Esempio di utilizzo
 # with open(f"output/missing_seeds_{fold}_{year}.json", 'r') as file:

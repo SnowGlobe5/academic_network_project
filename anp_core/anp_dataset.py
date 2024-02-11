@@ -1,3 +1,32 @@
+"""
+anp_dataset.py - ANP Dataset Module
+
+This module provides functionality to load and process data for the Academic Network Project (ANP) dataset.
+
+Functions/Classes:
+- load_node_csv: Load node data from a CSV file.
+- load_edge_csv: Load edge data from a CSV file.
+- IdentityEncoder: Identity encoder class for converting raw column values to PyTorch tensors.
+- ANPDataset: Dataset class for the ANP dataset, inheriting from InMemoryDataset.
+
+The ANPDataset class loads and processes node and edge data from CSV files, and prepares it for use in PyTorch-Geometric.
+"""
+
+import os
+import tarfile
+import sys
+import urllib
+
+import pandas as pd
+import torch
+from torch_geometric.data import HeteroData
+from torch_geometric.data import InMemoryDataset
+
+from academic_network_project.anp_core.parse_aminer_dataset import extract_dataset
+
+
+# Function definitions and class declarations follow...
+
 import os
 import tarfile
 import sys
@@ -12,6 +41,18 @@ from parse_aminer_dataset import extract_dataset
 
 
 def load_node_csv(path, index_col, encoders=None, **kwargs):
+    """
+    Load node data from a CSV file.
+
+    Args:
+        path (str): Path to the CSV file.
+        index_col (str): Name of the index column.
+        encoders (dict): Dictionary containing encoders for different columns.
+        **kwargs: Additional keyword arguments for pandas.read_csv.
+
+    Returns:
+        tuple: Tuple containing node features and list of node indices.
+    """
     df = pd.read_csv(path, index_col=index_col, **kwargs).sort_index()
     list = [index for index in df.index.unique().to_list()]
 
@@ -23,8 +64,20 @@ def load_node_csv(path, index_col, encoders=None, **kwargs):
     return x, list
 
 
-def load_edge_csv(path, src_index_col, dst_index_col,
-                  encoders=None, **kwargs):
+def load_edge_csv(path, src_index_col, dst_index_col, encoders=None, **kwargs):
+    """
+    Load edge data from a CSV file.
+
+    Args:
+        path (str): Path to the CSV file.
+        src_index_col (str): Name of the source index column.
+        dst_index_col (str): Name of the destination index column.
+        encoders (dict): Dictionary containing encoders for different columns.
+        **kwargs: Additional keyword arguments for pandas.read_csv.
+
+    Returns:
+        tuple: Tuple containing edge index and edge attributes.
+    """
     df = pd.read_csv(path, **kwargs)
 
     src = []
@@ -48,6 +101,12 @@ def load_edge_csv(path, src_index_col, dst_index_col,
 
 
 class IdentityEncoder(object):
+    """
+    Identity encoder class.
+
+    The 'IdentityEncoder' takes the raw column values and converts them to PyTorch tensors.
+    """
+
     # The 'IdentityEncoder' takes the raw column values and converts them to
     # PyTorch tensors.
     def __init__(self, dtype=None):
@@ -58,6 +117,20 @@ class IdentityEncoder(object):
 
 
 class ANPDataset(InMemoryDataset):
+    """
+    ANP Dataset class for academic network project dataset.
+
+    Args:
+        root (str): Root directory where the dataset should be saved.
+        transform (callable, optional): A function/transform that takes in an 
+            PyTorch-Geometric data object and returns a transformed version. 
+            The data object will be transformed before every access. 
+            (default: None)
+        pre_transform (callable, optional): A function/transform that takes in an 
+            PyTorch-Geometric data object and returns a transformed version. 
+            The data object will be transformed before being saved to disk. 
+            (default: None)
+    """
 
     def __init__(self, root, transform=None, pre_transform=None):
         super(ANPDataset, self).__init__(root, transform, pre_transform)
@@ -72,6 +145,9 @@ class ANPDataset(InMemoryDataset):
         return [f'my_data.pt']
 
     def download(self):
+        """
+        Download and extract the dataset.
+        """
         if not os.path.exists(f"{self.root}/mapping"):
             if not os.path.exists(f"dblp_v14.json"):
                 # print("Start download...")
@@ -88,6 +164,9 @@ class ANPDataset(InMemoryDataset):
             print("Parsing completed!")
 
     def process(self):
+        """
+        Process and prepare the dataset.
+        """
         # Load data from CSV files
         paper_path = self.raw_paths[0]
         cites_path = self.raw_paths[1]
@@ -96,34 +175,20 @@ class ANPDataset(InMemoryDataset):
 
         author_x, author_list = load_node_csv(writes_path, index_col='author_id')
 
-        paper_x, paper_list = load_node_csv(
-            paper_path, index_col='id', encoders={
-                'year': IdentityEncoder(dtype=torch.long),
-                'citations': IdentityEncoder(dtype=torch.long)})
+        paper_x, paper_list = load_node_csv(paper_path, index_col='id',
+            encoders={'year': IdentityEncoder(dtype=torch.long), 'citations': IdentityEncoder(dtype=torch.long)})
 
         topic_x, topic_list = load_node_csv(about_path, index_col='topic_id')
 
-        cites_index, cites_label = load_edge_csv(
-            cites_path,
-            src_index_col='paper1_id',
-            dst_index_col='paper2_id',
-        )
+        cites_index, cites_label = load_edge_csv(cites_path, src_index_col='paper1_id', dst_index_col='paper2_id', )
 
-        about_index, about_label = load_edge_csv(
-            about_path,
-            src_index_col='paper_id',
-            dst_index_col='topic_id',
-        )
+        about_index, about_label = load_edge_csv(about_path, src_index_col='paper_id', dst_index_col='topic_id', )
 
-        writes_index, writes_label = load_edge_csv(
-            writes_path,
-            src_index_col='author_id',
-            dst_index_col='paper_id',
-        )
+        writes_index, writes_label = load_edge_csv(writes_path, src_index_col='author_id', dst_index_col='paper_id', )
 
         data = HeteroData()
         data['author'].num_nodes = len(author_list)  # Authors do not have any features.
-        data['topic'].num_nodes = len(topic_list) # Topics do not have any features.
+        data['topic'].num_nodes = len(topic_list)  # Topics do not have any features.
         data['paper'].x = paper_x
         data['paper']['id'] = torch.Tensor(paper_list)
         data['author']['id'] = torch.Tensor(author_list)

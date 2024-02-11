@@ -22,8 +22,8 @@ import multiprocessing as mp
 
 import torch
 
-from anp_dataset import ANPDataset
-from anp_utils import *
+from academic_network_project.anp_core.anp_dataset import ANPDataset
+from academic_network_project.anp_core.anp_utils import *
 
 
 def get_papers_per_author_year(data, author, papers_year_list):
@@ -315,7 +315,7 @@ def generate_infosphere_part(max_year, part, start, finish):
     Returns:
         None
     """
-    root = "ANP_DATA"
+    root = "../anp_data"
     
     if d_cuda:
         if part % 2 == 0: DEVICE = 'cuda:0'

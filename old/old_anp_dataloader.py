@@ -13,7 +13,7 @@ class ANPDataLoaderLegacy(torch.utils.data.DataLoader):
     def __init__(self, dataset: Union[Dataset, Sequence[BaseData], DatasetAdapter],
                  batch_size: int = 1,
                  shuffle: bool = False,
-                 root="ANP_DATA", fold=-1, max_year=None, keep_edges=False, **kwargs):
+                 root="anp_data", fold=-1, max_year=None, keep_edges=False, **kwargs):
         self.dataset = dataset
         self.root = root
         self.fold = fold

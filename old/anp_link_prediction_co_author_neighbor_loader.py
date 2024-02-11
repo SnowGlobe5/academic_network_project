@@ -2,8 +2,8 @@ import torch
 import os
 import torch.nn.functional as F
 import torch_geometric.transforms as T
-from anp_dataset import ANPDataset
-from anp_utils import *
+from academic_network_project.anp_core.anp_dataset import ANPDataset
+from academic_network_project.anp_core.anp_utils import *
 from torch.nn import Linear
 from torch_geometric.loader import NeighborLoader
 from torch_geometric.nn import SAGEConv, to_hetero
@@ -12,8 +12,8 @@ from tqdm import tqdm
 BATCH_SIZE = 4096
 YEAR = 2019
 
-ROOT = "ANP_DATA"
-PATH = "ANP_MODELS/1_co_author_prediction/"
+ROOT = "../anp_data"
+PATH = "../anp_models/1_co_author_prediction/"
 
 #TODO remove
 import shutil

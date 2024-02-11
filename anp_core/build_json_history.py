@@ -1,3 +1,16 @@
+"""
+build_json_history.py
+
+This script generates a JSON file containing the history of co-authors for each author in the ANP dataset.
+
+Usage: python build_json_history.py
+
+Note: Ensure that the ANP dataset is available in the 'anp_data' directory.
+
+Example:
+    $ python build_json_history.py
+"""
+
 import json
 # import cProfile
 import io
@@ -6,12 +19,12 @@ import multiprocessing as mp
 
 import torch
 
-from anp_dataset import ANPDataset
-from anp_utils import *
+from academic_network_project.anp_core.anp_dataset import ANPDataset
+from academic_network_project.anp_core.anp_utils import *
  
           
 
-ROOT = "ANP_DATA"
+ROOT = "../anp_data"
 
 dataset = ANPDataset(root=ROOT)
 data = dataset[0]

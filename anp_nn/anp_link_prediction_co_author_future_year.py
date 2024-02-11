@@ -2,8 +2,9 @@ import torch
 import os
 import torch.nn.functional as F
 import torch_geometric.transforms as T
-from anp_dataset import ANPDataset
-from anp_utils import *
+from torch_geometric.utils import coalesce
+from academic_network_project.anp_core.anp_dataset import ANPDataset
+from academic_network_project.anp_core.anp_utils import *
 from torch.nn import Linear
 from torch_geometric.loader import LinkNeighborLoader
 from torch_geometric.nn import SAGEConv, to_hetero
@@ -12,8 +13,8 @@ from tqdm import tqdm
 BATCH_SIZE = 4096
 YEAR = 2019
 
-ROOT = "ANP_DATA"
-PATH = "ANP_MODELS/1_co_author_prediction_future_no_info/"
+ROOT = "../anp_data"
+PATH = f"anp_models/1_co_author_prediction_future_{sys.argv[3]}/"
 
 DEVICE=torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
@@ -34,6 +35,24 @@ lr = float(sys.argv[2])
 dataset = ANPDataset(root=ROOT)
 data = dataset[0]
 
+number = sys.argv[3]
+fold = [0, 1, 2, 3, 4] #TODO param
+fold_string = [str(x) for x in fold]
+fold_string = '_'.join(fold_string)
+name_infosphere = f"{number}_infosphere_{fold_string}_{YEAR}_noisy.pt"
+
+# Get infosphere
+if os.path.exists(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}"):
+    infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}")
+    data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(infosphere_edges[CITES])
+    data['paper', 'infosphere_cites', 'paper'].edge_label = None
+    data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(infosphere_edges[WRITES])
+    data['author', 'infosphere_writes', 'paper'].edge_label = None
+    data['paper', 'infosphere_about', 'topic'].edge_index = coalesce(infosphere_edges[ABOUT])
+    data['paper', 'infosphere_about', 'topic'].edge_label = None
+else:
+    raise Exception(f"{name_infosphere} not found!!")
+
 # Use already existing co-author edge (if exist)
 if os.path.exists(f"{ROOT}/processed/co_author_edge{YEAR+1}.pt"):
     print("Co-author edge found!")
@@ -43,11 +62,12 @@ else:
     print("Generating co-author edge...")
     data['author', 'co_author', 'author'].edge_index = generate_co_author_edge_year(data, YEAR+1)
     data['author', 'co_author', 'author'].edge_label = None
-    torch.save(data['author', 'co_author', 'author'].edge_index, f"{ROOT}/processed/co_author_edge{YEAR*1}.pt")
+    torch.save(data['author', 'co_author', 'author'].edge_index, f"{ROOT}/processed/co_author_edge{YEAR+1}.pt")
 
 # Make paper features float and the graph undirected
 data['paper'].x = data['paper'].x.to(torch.float)
 data = T.ToUndirected()(data)
+data = data.to('cpu')
 
 if use_link_split == True:
     sub_graph_train= anp_simple_filter_data(data, root=ROOT, folds=[0, 1, 2, 3, 4], max_year=YEAR)    
