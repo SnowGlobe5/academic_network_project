@@ -37,7 +37,7 @@ import torch
 from torch_geometric.data import HeteroData
 from torch_geometric.data import InMemoryDataset
 
-from parse_aminer_dataset import extract_dataset
+from academic_network_project.anp_core.parse_aminer_dataset import extract_dataset
 
 
 def load_node_csv(path, index_col, encoders=None, **kwargs):
