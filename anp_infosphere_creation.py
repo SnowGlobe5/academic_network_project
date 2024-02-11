@@ -1,3 +1,19 @@
+"""
+anp_infophere_creation.py - Academic Network Project Infosphere Creation
+
+This script is responsible for creating the academic infosphere, a network representation
+of academic interactions including papers, authors, and topics. It generates parts of the
+infosphere in parallel using multiprocessing.
+
+Parameters:
+- year (int): The year for which the infosphere is generated.
+- n_fold (int): The fold number for cross-validation. If set to -1, all folds are considered.
+- keep_edges (bool): Flag to determine whether to keep edges in the dataset.
+- n_parts (int): The number of parts to divide the generation process into for parallel processing.
+- d_cuda (bool): Flag to determine whether to use two CUDA for GPU acceleration.
+- specific_part (int): Specifies a specific part to generate. If set to -1, all parts are generated.
+
+"""
 import json
 # import cProfile
 import io
@@ -11,6 +27,17 @@ from anp_utils import *
 
 
 def get_papers_per_author_year(data, author, papers_year_list):
+    """
+    Get papers per author for a specific year.
+
+    Args:
+        data (dict): Dataset dictionary.
+        author (int): Author ID.
+        papers_year_list (list): List of paper IDs for a specific year.
+
+    Returns:
+        torch.Tensor: Papers per author for the specific year.
+    """
     edge_index = data['author', 'writes', 'paper'].edge_index
     sub_edge_index, _ = expand_1_hop_edge_index(edge_index, author, flow='target_to_source')
     mask = torch.isin(sub_edge_index[1], papers_year_list)
@@ -18,6 +45,20 @@ def get_papers_per_author_year(data, author, papers_year_list):
 
 
 def compare_frontier(frontier_user, scanned_user, frontier_seeds, scanned_infosphere, infosphere_found, is_expand_seed):
+    """
+    Compare frontier nodes and scanned nodes to find matches.
+
+    Args:
+        frontier_user (list): Frontier nodes from user.
+        scanned_user (dict): Scanned nodes from user.
+        frontier_seeds (dict): Frontier seeds.
+        scanned_infosphere (dict): Scanned nodes from infosphere.
+        infosphere_found (list): List to store found infosphere nodes.
+        is_expand_seed (bool): Flag to determine if it's expanding seeds or not.
+
+    Returns:
+        dict: Updated frontier seeds.
+    """
     # time = datetime.now()
     key_to_delete = []
     for t in [PAPER, AUTHOR, TOPIC]:
@@ -45,6 +86,19 @@ def compare_frontier(frontier_user, scanned_user, frontier_seeds, scanned_infosp
 
 
 def update_scanned_expand(scanned, frontier, cites_edge_index, writes_edge_index, about_edge_index):
+    """
+    Update scanned nodes by expanding the frontier.
+
+    Args:
+        scanned (dict): Scanned nodes.
+        frontier (list): Frontier nodes.
+        cites_edge_index (torch.Tensor): Cites edge index.
+        writes_edge_index (torch.Tensor): Writes edge index.
+        about_edge_index (torch.Tensor): About edge index.
+
+    Returns:
+        list: Updated frontier nodes.
+    """
     # for p,frontier in frontier-seeds{
     (temp_paper1, temp_author, temp_topic) = expand_1_hop_graph((cites_edge_index, writes_edge_index, about_edge_index), frontier[PAPER], PAPER, scanned)
     temp_paper2 = expand_1_hop_graph(writes_edge_index, frontier[AUTHOR], AUTHOR, scanned)
@@ -60,6 +114,19 @@ def update_scanned_expand(scanned, frontier, cites_edge_index, writes_edge_index
 
 
 def update_scanned_expand_seeds(scanned, frontier, cites_edge_index, writes_edge_index, about_edge_index):
+    """
+    Update scanned nodes from seed expansion.
+
+    Args:
+        scanned (dict): Scanned nodes.
+        frontier (list): Frontier nodes.
+        cites_edge_index (torch.Tensor): Cites edge index.
+        writes_edge_index (torch.Tensor): Writes edge index.
+        about_edge_index (torch.Tensor): About edge index.
+
+    Returns:
+        dict: Updated frontier nodes.
+    """
     new_frontier = {}
     for seed in frontier.keys():
         new_frontier[seed] = update_scanned_expand(scanned[seed], frontier[seed], cites_edge_index, writes_edge_index, about_edge_index)
@@ -67,6 +134,18 @@ def update_scanned_expand_seeds(scanned, frontier, cites_edge_index, writes_edge
 
 
 def get_history_infosphere_author(data, data_next_year, author_id, papers_next_year):
+    """
+    Get history and infosphere for a specific author.
+
+    Args:
+        data (dict): Dataset dictionary.
+        data_next_year (dict): Dataset dictionary for the next year.
+        author_id (int): Author ID.
+        papers_next_year (list): List of paper IDs for the next year.
+
+    Returns:
+        tuple: History mask, infosphere found, and missing seeds.
+    """
     author_papers_next_year = get_papers_per_author_year(data_next_year, author_id, papers_next_year)
     writes_edge_index_next_year = data_next_year['author', 'writes', 'paper'].edge_index
     cites_edge_index_next_year = data_next_year['paper', 'cites', 'paper'].edge_index
@@ -174,6 +253,16 @@ def get_history_infosphere_author(data, data_next_year, author_id, papers_next_y
 
 
 def create_mask_edge_index(edge_index, specified_edge):
+    """
+    Create mask for edge index.
+
+    Args:
+        edge_index (torch.Tensor): Edge index.
+        specified_edge (torch.Tensor): Specified edge.
+
+    Returns:
+        torch.Tensor: Mask for edge index.
+    """
     mask = torch.zeros_like(edge_index[0], dtype=torch.bool)
     try:
         for i in range(specified_edge.size(1)):
@@ -185,6 +274,21 @@ def create_mask_edge_index(edge_index, specified_edge):
 
 
 def save_infosphere(root, fold, max_year, infosphere, missing_seeds, part, index):
+    """
+    Save the generated infosphere.
+
+    Args:
+        root (str): Root directory.
+        fold (str): Fold string.
+        max_year (int): Maximum year.
+        infosphere (list): List of infosphere.
+        missing_seeds (list): List of missing seeds.
+        part (int): Part number.
+        index (int): Index.
+
+    Returns:
+        None
+    """
     infosphere_file = io.open(f"{root}/computed_infosphere/{max_year}/log_{fold}_{max_year}_{part}", "w", encoding="utf-8")
     infosphere_file.write(f"{index}")
     infosphere_file.close()
@@ -199,6 +303,18 @@ def save_infosphere(root, fold, max_year, infosphere, missing_seeds, part, index
  
           
 def generate_infosphere_part(max_year, part, start, finish):
+    """
+    Generate a part of the infosphere.
+
+    Args:
+        max_year (int): Maximum year.
+        part (int): Part number.
+        start (int): Start index.
+        finish (int): Finish index.
+
+    Returns:
+        None
+    """
     root = "ANP_DATA"
     
     if d_cuda:
@@ -235,6 +351,10 @@ def generate_infosphere_part(max_year, part, start, finish):
             
 
 def main():
+    """
+    Main function to generate the infosphere parts in parallel using multiprocessing.
+    Each part is responsible for generating a portion of the infosphere.
+    """
     tot = 5259857  #TODO 
     delta = (int) (tot / n_parts)
     mp.set_start_method('spawn', force=True)
