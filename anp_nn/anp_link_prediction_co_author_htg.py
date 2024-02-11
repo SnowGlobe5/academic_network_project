@@ -8,7 +8,7 @@ from torch_geometric.datasets import DBLP
 from torch_geometric.nn import HGTConv, Linear
 
 from academic_network_project.anp_core.anp_dataset import ANPDataset
-import academic_network_project.anp_core.anp_utils
+from academic_network_project.anp_core.anp_utils import *
 
 # path = osp.join(osp.dirname(osp.realpath(__file__)), '../../data/DBLP')
 # # We initialize conference node features with a single one-vector as feature:
@@ -26,7 +26,7 @@ DEVICE=torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 # Create ANP dataset
 dataset = ANPDataset(root=ROOT)
 data = dataset[0]
-data = anp_utils.anp_simple_filter_data(data, ROOT, [0], 2019)
+data = anp_simple_filter_data(data, ROOT, [0], 2019)
 
 # Make paper features float and the graph undirected
 data['paper'].x = data['paper'].x.to(torch.float)
@@ -65,7 +65,7 @@ data['topic'].x = embedding_topic(data['topic'].id.long())
 
 class HGT(torch.nn.Module):
     def __init__(self, hidden_channels, out_channels, num_heads, num_layers):
-        # super().__init__()
+        super().__init__()
 
         self.lin_dict = torch.nn.ModuleDict()
         for node_type in data.node_types:
