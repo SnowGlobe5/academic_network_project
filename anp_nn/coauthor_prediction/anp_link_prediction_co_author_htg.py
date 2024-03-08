@@ -1,5 +1,6 @@
 import torch
 import os
+import numpy as np
 import torch.nn.functional as F
 import torch_geometric.transforms as T
 from academic_network_project.anp_core.anp_dataset import ANPDataset
@@ -15,7 +16,7 @@ YEAR = 2019
 ROOT = "../anp_data"
 PATH = "../anp_models/1_co_author_prediction_future_hgt/"
 
-DEVICE=torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+DEVICE=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 if sys.argv[1] == 'True':
     use_link_split = True
@@ -307,7 +308,12 @@ confusion_matrix = {
     'tn': 0
 }
 
-for epoch in range(first_epoch, 41):
+# Initialize variables for early stopping
+best_val_loss = np.inf
+patience = 10  # Number of epochs to wait if validation loss doesn't improve
+counter = 0   # Counter for patience
+
+for epoch in range(first_epoch, 100):
     # Train the model
     train_acc, train_loss = train()
 
@@ -321,8 +327,18 @@ for epoch in range(first_epoch, 41):
     # Test the model
     val_acc, loss_val = test(val_loader)
 
-    # Save the model
-    anp_save(model, PATH, epoch, train_loss, loss_val, val_acc)
+    # Save the model if validation loss improves
+    if loss_val < best_val_loss:
+        best_val_loss = loss_val
+        anp_save(model, PATH, epoch, train_loss, loss_val, val_acc)
+        counter = 0  # Reset the counter if validation loss improves
+    else:
+        counter += 1
+    
+    # Early stopping check
+    if counter >= patience:
+        print(f'Early stopping at epoch {epoch}.')
+        break
     
     training_loss_list.append(train_loss)
     validation_loss_list.append(loss_val)
@@ -331,6 +347,5 @@ for epoch in range(first_epoch, 41):
     
     # Print epoch results
     print(f'Epoch: {epoch:02d}, Loss: {train_loss:.4f} - {loss_val:.4f}, Accuracy: {val_acc:.4f}')
-    if epoch == 31:
-        generate_graph (training_loss_list, validation_loss_list, training_accuracy_list, validation_accuracy_list, confusion_matrix)
-generate_graph (training_loss_list, validation_loss_list, training_accuracy_list, validation_accuracy_list, confusion_matrix)
+    
+generate_graph(training_loss_list, validation_loss_list, training_accuracy_list, validation_accuracy_list, confusion_matrix)
