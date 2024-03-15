@@ -25,21 +25,6 @@ from torch_geometric.data import InMemoryDataset
 from academic_network_project.anp_core.parse_aminer_dataset import extract_dataset
 
 
-# Function definitions and class declarations follow...
-
-import os
-import tarfile
-import sys
-import urllib
-
-import pandas as pd
-import torch
-from torch_geometric.data import HeteroData
-from torch_geometric.data import InMemoryDataset
-
-from academic_network_project.anp_core.parse_aminer_dataset import extract_dataset
-
-
 def load_node_csv(path, index_col, encoders=None, **kwargs):
     """
     Load node data from a CSV file.
