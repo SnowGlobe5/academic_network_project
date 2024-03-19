@@ -8,14 +8,16 @@ from torch.nn import Linear
 from torch_geometric.loader import HGTLoader
 from torch_geometric.nn import SAGEConv, to_hetero
 from tqdm import tqdm
+from datetime import datetime
+
+current_date = datetime.now().strftime("%Y-%m-%d")
 
 BATCH_SIZE = 4096
 YEAR = 2019
 
 
 ROOT = "../anp_data"
-PATH = "../anp_models/1_co_author_prediction/"
-
+PATH = f"../anp_models/{sys.argv[0]}_{current_date}/"
 # Create ANP dataset
 dataset = ANPDataset(root=ROOT)
 data = dataset[0]

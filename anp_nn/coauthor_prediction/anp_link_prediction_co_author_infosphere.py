@@ -10,13 +10,15 @@ from torch.nn import Linear
 from torch_geometric.loader import LinkNeighborLoader
 from torch_geometric.nn import SAGEConv, to_hetero
 from tqdm import tqdm
+from datetime import datetime
+
+current_date = datetime.now().strftime("%Y-%m-%d")
 
 BATCH_SIZE = 4096
 YEAR = 2019
 
 ROOT = "../anp_data"
-PATH = "../anp_models/1_co_author_prediction/"
-
+PATH = f"../anp_models/{sys.argv[0]}_{current_date}/"
 DEVICE=torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 if sys.argv[1] == 'True':
@@ -57,7 +59,7 @@ else:
 
 
 # Use already existing co-author edge (if exist)
-if os.path.exists(f"{ROOT}/processed/difference_co_author_edge{YEAR}1.pt"):
+if os.path.exists(f"{ROOT}/processed/difference_co_author_edge{YEAR}.pt"):
     print("Difference co-author edge found!")
     data['author', 'difference_co_author', 'author'].edge_index = torch.load(f"{ROOT}/processed/difference_co_author_edge{YEAR}.pt")
     data['author', 'difference_co_author', 'author'].edge_label = None
@@ -319,7 +321,7 @@ best_val_loss = np.inf
 patience = 10  # Number of epochs to wait if validation loss doesn't improve
 counter = 0   # Counter for patience
 
-for epoch in range(first_epoch, 100):
+for epoch in range(first_epoch, 500):
     # Train the model
     train_acc, train_loss = train()
 

@@ -170,3 +170,4 @@ out/*
 *.json
 graph_gen.py
 log*
+*.pdf

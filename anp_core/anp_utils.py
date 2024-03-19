@@ -370,9 +370,9 @@ def generate_difference_co_author_edge_year(data, year, root):
         for dst in diff:
             difference_edge_index = torch.cat(
                 (difference_edge_index, torch.Tensor([[src], [dst]]).to(torch.int64).to(DEVICE)), dim=1)
-            print(dst_old)
-            print(dst_new)
-            print(diff)
+            # print(dst_old)
+            # print(dst_new)
+            # print(diff)
     return difference_edge_index
 
 

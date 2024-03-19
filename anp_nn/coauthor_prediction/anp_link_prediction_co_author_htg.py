@@ -9,6 +9,15 @@ from torch.nn import Linear
 from torch_geometric.loader import LinkNeighborLoader
 from torch_geometric.nn import SAGEConv, HGTConv, to_hetero
 from tqdm import tqdm
+from datetime import datetime
+
+current_date = datetime.now().strftime("%Y-%m-%d")
+
+# path = osp.join(osp.dirname(osp.realpath(__file__)), '../../data/DBLP')
+# # We initialize conference node features with a single one-vector as feature:
+# dataset = DBLP(path, transform=T.Constant(node_types='conference'))
+# data = dataset[0]
+# print(data)
 
 BATCH_SIZE = 4096
 YEAR = 2019

@@ -9,13 +9,15 @@ from torch.nn import Linear
 from torch_geometric.loader import LinkNeighborLoader
 from torch_geometric.nn import SAGEConv, to_hetero
 from tqdm import tqdm
+from datetime import datetime
+
+current_date = datetime.now().strftime("%Y-%m-%d")
 
 BATCH_SIZE = 4096
 YEAR = 2019
 
 ROOT = "../anp_data"
-PATH = "../anp_models/1_next_topic_prediction/"
-
+PATH = f"../anp_models/{sys.argv[0]}_{current_date}/"
 DEVICE=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 if sys.argv[1] == 'True':

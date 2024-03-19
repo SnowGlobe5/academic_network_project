@@ -10,6 +10,8 @@ from torch_geometric.nn import SAGEConv, to_hetero
 from academic_network_project.anp_core.anp_dataset import ANPDataset
 from anp_utils import generate_co_author_edge_year, anp_filter_data
 
+current_date = datetime.now().strftime("%Y-%m-%d")
+
 BATCH_SIZE = 4096
 YEAR_TRAIN = 2019
 YEAR_VAL = 2020
