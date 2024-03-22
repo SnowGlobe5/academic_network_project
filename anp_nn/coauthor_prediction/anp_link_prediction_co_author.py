@@ -261,7 +261,7 @@ patience = 10
 counter = 0
 
 # Training Loop
-for epoch in range(1, 2):
+for epoch in range(1, 500):
     train_acc, train_loss = train()
     confusion_matrix = {'tp': 0, 'fp': 0, 'fn': 0, 'tn': 0}
     val_acc, val_loss = test(val_loader)
