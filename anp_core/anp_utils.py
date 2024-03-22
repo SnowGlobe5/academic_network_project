@@ -476,10 +476,10 @@ def anp_save(model, path, epoch, loss, loss_val, accuracy):
 
   """
     torch.save(model, path + 'model.pt')
-    new = {'epoch': epoch, 'loss': loss, 'mse': loss_val, 'accuracy': accuracy}
+    new = {'epoch': epoch, 'loss': loss, 'loss': loss_val, 'accuracy': accuracy}
     with open(path + 'info.json', 'r') as json_file:
         data = json.load(json_file)
-    data.append(new)
+    data['data'].append(new)
     with open(path + 'info.json', 'w') as json_file:
         json.dump(data, json_file)
 
@@ -497,10 +497,10 @@ def anp_load(path):
   """
     with open(path + 'info.json', 'r') as json_file:
         data = json.load(json_file)
-    return torch.load(path + 'model.pt'), data[-1]["epoch"]
+    return torch.load(path + 'model.pt'), data[-1]["data"]["epoch"]
 
 
-def generate_graph(training_loss_list, validation_loss_list, training_accuracy_list, validation_accuracy_list,
+def generate_graph(path, training_loss_list, validation_loss_list, training_accuracy_list, validation_accuracy_list,
                    confusion_matrix):
     """
     Generate and save graphs based on training and validation metrics.
@@ -516,55 +516,27 @@ def generate_graph(training_loss_list, validation_loss_list, training_accuracy_l
     - None
 
     """
-
-
-    time = datetime.now()
     plt.plot(training_loss_list, label='train_loss')
     plt.plot(validation_loss_list, label='validation_loss')
     plt.legend()
-    plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_loss{sys.argv[3]}.pdf')
+    plt.savefig(f'{path}{os.path.basename(sys.argv[0][:-3])}_loss.pdf')
     plt.close()
 
     plt.plot(training_accuracy_list, label='train_accuracy')
     plt.plot(validation_accuracy_list, label='validation_accuracy')
     plt.legend()
-    plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_accuracy{sys.argv[3]}.pdf')
+    plt.savefig(f'{path}{os.path.basename(sys.argv[0][:-3])}_accuracy.pdf')
     plt.close()
-
-    # time = datetime.now()
-    # plt.plot(training_loss_list[1:], label='train_loss')
-    # plt.plot(validation_loss_list[1:],label='val_loss')
-    # plt.legend()
-    # plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_loss2.pdf')
-    # plt.close()
-
-    # plt.plot(accuracy_list[1:],label='accuracy')
-    # plt.legend()
-    # plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_accuracy2.pdf')
-    # plt.close()
-
-    # time = datetime.now()
-    # plt.plot(training_loss_list[2:], label='train_loss')
-    # plt.plot(validation_loss_list[2:],label='val_loss')
-    # plt.legend()
-    # plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_loss3.pdf')
-    # plt.close()
-
-    # plt.plot(accuracy_list[2:],label='accuracy')
-    # plt.legend()
-    # plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_accuracy3.pdf')
-    # plt.close()
-
 
     array = [[confusion_matrix['tp'], confusion_matrix['fp']], [confusion_matrix['fn'], confusion_matrix['tn']]]
     df_cm = pd.DataFrame(array, index=[i for i in ("POSITIVE", "NEGATIVE")], columns=[i for i in ("POSITIVE", "NEGATIVE")])
     plt.figure(figsize=(10, 7))
     sn.heatmap(df_cm, annot=True)
-    plt.savefig(f'out/{sys.argv[0][:-3]}_{time.strftime("%Y%m%d%H%M%S")}_CM{sys.argv[3]}.pdf')
+    plt.savefig(f'{path}{os.path.basename(sys.argv[0][:-3])}_CM.pdf')
     plt.close()
 
     value_log = {'training_loss_list': training_loss_list, 'validation_loss_list': validation_loss_list,
         'training_accuracy_list': training_accuracy_list, 'validation_accuracy_list': validation_accuracy_list}
 
-    with open(f'out/log_{time.strftime("%Y%m%d%H%M%S")}.json', 'w', encoding='utf-8') as f:
+    with open(f'{path}{os.path.basename(sys.argv[0][:-3])}_log.json', 'w', encoding='utf-8') as f:
         json.dump(value_log, f, ensure_ascii=False, indent=4)

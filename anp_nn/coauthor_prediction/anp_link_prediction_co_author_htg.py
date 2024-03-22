@@ -192,6 +192,7 @@ class GNNEncoder(torch.nn.Module):
             x_dict[node_type] = self.lin_dict[node_type](x).relu_()
         for conv in self.convs:
             x_dict = conv(x_dict, edge_index_dict)
+            # x_dict = {key: x.relu() for key, x in x_dict.items()}
 
         return x_dict
 
@@ -357,4 +358,4 @@ for epoch in range(first_epoch, 100):
     # Print epoch results
     print(f'Epoch: {epoch:02d}, Loss: {train_loss:.4f} - {loss_val:.4f}, Accuracy: {val_acc:.4f}')
     
-generate_graph(training_loss_list, validation_loss_list, training_accuracy_list, validation_accuracy_list, confusion_matrix)
+generate_graph(PATH, training_loss_list, validation_loss_list, training_accuracy_list, validation_accuracy_list, confusion_matrix)

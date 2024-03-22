@@ -19,6 +19,7 @@ YEAR = 2019
 
 ROOT = "../anp_data"
 PATH = f"../anp_models/{sys.argv[0]}_{current_date}/"
+
 DEVICE=torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 if sys.argv[1] == 'True':
@@ -26,10 +27,8 @@ if sys.argv[1] == 'True':
 else:
     use_link_split = False
 lr = float(sys.argv[2])
-
-number = sys.argv[3]
     
-#TODO remove
+# #TODO remove
 # import shutil
 # try:
 #     shutil.rmtree(PATH)
@@ -40,21 +39,34 @@ number = sys.argv[3]
 dataset = ANPDataset(root=ROOT)
 data = dataset[0]
 
+number = sys.argv[3]
 fold = [0, 1, 2, 3, 4] #TODO param
 fold_string = [str(x) for x in fold]
 fold_string = '_'.join(fold_string)
 name_infosphere = f"{number}_infosphere_{fold_string}_{YEAR}_noisy.pt"
 
-# Use already existing co-author edge (if exist)
-if os.path.exists(f"{ROOT}/processed/difference_co_author_edge{YEAR}.pt"):
-    print("Difference co-author edge found!")
-    data['author', 'difference_co_author', 'author'].edge_index = torch.load(f"{ROOT}/processed/difference_co_author_edge{YEAR}.pt")
-    data['author', 'difference_co_author', 'author'].edge_label = None
+# Get infosphere
+if os.path.exists(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}"):
+    infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}")
+    data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(infosphere_edges[CITES])
+    data['paper', 'infosphere_cites', 'paper'].edge_label = None
+    data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(infosphere_edges[WRITES])
+    data['author', 'infosphere_writes', 'paper'].edge_label = None
+    data['paper', 'infosphere_about', 'topic'].edge_index = coalesce(infosphere_edges[ABOUT])
+    data['paper', 'infosphere_about', 'topic'].edge_label = None
 else:
-    print("Generating difference co-author edge...")
-    data['author', 'difference_co_author', 'author'].edge_index = generate_difference_co_author_edge_year(data, YEAR, ROOT)
-    data['author', 'difference_co_author', 'author'].edge_label = None
-    torch.save(data['author', 'difference_co_author', 'author'].edge_index, f"{ROOT}/processed/difference_co_author_edge{YEAR}.pt")
+    raise Exception(f"{name_infosphere} not found!!")
+
+# Use already existing co-author edge (if exist)
+if os.path.exists(f"{ROOT}/processed/co_author_edge{YEAR+1}.pt"):
+    print("Co-author edge found!")
+    data['author', 'co_author', 'author'].edge_index = torch.load(f"{ROOT}/processed/co_author_edge{YEAR+1}.pt")
+    data['author', 'co_author', 'author'].edge_label = None
+else:
+    print("Generating co-author edge...")
+    data['author', 'co_author', 'author'].edge_index = generate_co_author_edge_year(data, YEAR+1)
+    data['author', 'co_author', 'author'].edge_label = None
+    torch.save(data['author', 'co_author', 'author'].edge_index, f"{ROOT}/processed/co_author_edge{YEAR+1}.pt")
 
 # Make paper features float and the graph undirected
 data['paper'].x = data['paper'].x.to(torch.float)
@@ -63,45 +75,44 @@ data = data.to('cpu')
 
 if use_link_split == True:
     sub_graph_train= anp_simple_filter_data(data, root=ROOT, folds=[0, 1, 2, 3, 4], max_year=YEAR)    
-    
+ 
     transform = T.RandomLinkSplit(
         num_val=0.2,
-        num_test=0,
-        disjoint_train_ratio=0.3,
-        neg_sampling_ratio=2.0,
-        add_negative_train_samples=False,
-        edge_types=('author', 'difference_co_author', 'author')
+        num_test=0.0,
+        #disjoint_train_ratio=0.3,
+        neg_sampling_ratio=1.0,
+        add_negative_train_samples=True,
+        edge_types=('author', 'co_author', 'author')
     )
     train_data, val_data, _= transform(sub_graph_train)
-    
+
     # Define seed edges:
-    edge_label_index = train_data['author', 'difference_co_author', 'author'].edge_label_index
-    edge_label = train_data['author', 'difference_co_author', 'author'].edge_label
+    edge_label_index = train_data['author', 'co_author', 'author'].edge_label_index
+    edge_label = train_data['author', 'co_author', 'author'].edge_label
     train_loader = LinkNeighborLoader(
         data=train_data,
         num_neighbors=[20, 10],
-        neg_sampling_ratio=2.0,
-        edge_label_index=(('author', 'difference_co_author', 'author'), edge_label_index),
+        #neg_sampling_ratio=2.0,
+        edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
         edge_label=edge_label,
-        batch_size=256,
+        batch_size=1024,
         shuffle=True,
     )
 
-    edge_label_index = val_data['author', 'difference_co_author', 'author'].edge_label_index
-    edge_label = val_data['author', 'difference_co_author', 'author'].edge_label
+    edge_label_index = val_data['author', 'co_author', 'author'].edge_label_index
+    edge_label = val_data['author', 'co_author', 'author'].edge_label
     val_loader = LinkNeighborLoader(
         data=val_data,
         num_neighbors=[20, 10],
-        edge_label_index=(('author', 'difference_co_author', 'author'), edge_label_index),
+        edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
         edge_label=edge_label,
-        batch_size=3 * 256,
+        batch_size=1024,
         shuffle=False,
     )
-
 else:
     # Train
     # Filter training data
-    sub_graph_train= anp_simple_filter_data(data, root=ROOT, folds=[0, 1, 2, 3], max_year=YEAR)    
+    sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3 ], max_year=YEAR, keep_edges=False)    
     #sub_graph_train = sub_graph_train.to(DEVICE)
 
     transform = T.RandomLinkSplit(
@@ -111,9 +122,10 @@ else:
         #neg_sampling_ratio=2.0,
         neg_sampling_ratio=1.0,
         add_negative_train_samples=True,
-        edge_types=('author', 'difference_co_author', 'author')
+        edge_types=('author', 'co_author', 'author')
     )
     train_data, _, _= transform(sub_graph_train)
+
 
     # Validation
     # Filter validation data
@@ -126,36 +138,37 @@ else:
         #neg_sampling_ratio=2.0,
         neg_sampling_ratio=1.0,
         add_negative_train_samples=True,
-        edge_types=('author', 'difference_co_author', 'author')
+        edge_types=('author', 'co_author', 'author')
     )
     val_data, _, _= transform(sub_graph_val)
 
+
     # Define seed edges:
-    edge_label_index = train_data['author', 'difference_co_author', 'author'].edge_label_index
-    edge_label = train_data['author', 'difference_co_author', 'author'].edge_label
+    edge_label_index = train_data['author', 'co_author', 'author'].edge_label_index
+    edge_label = train_data['author', 'co_author', 'author'].edge_label
     train_loader = LinkNeighborLoader(
         data=train_data,
         num_neighbors=[20, 10],
         #neg_sampling_ratio=2.0,
-        edge_label_index=(('author', 'difference_co_author', 'author'), edge_label_index),
+        edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
         edge_label=edge_label,
         batch_size=1024,
         shuffle=True,
     )
 
-    edge_label_index = val_data['author', 'difference_co_author', 'author'].edge_label_index
-    edge_label = val_data['author', 'difference_co_author', 'author'].edge_label
+    edge_label_index = val_data['author', 'co_author', 'author'].edge_label_index
+    edge_label = val_data['author', 'co_author', 'author'].edge_label
     val_loader = LinkNeighborLoader(
         data=val_data,
         num_neighbors=[20, 10],
-        edge_label_index=(('author', 'difference_co_author', 'author'), edge_label_index),
+        edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
         edge_label=edge_label,
         batch_size=1024,
         shuffle=False,
     )
 
 # Delete the co-author edge (data will be used for data.metadata())
-del data['author', 'difference_co_author', 'author']
+del data['author', 'co_author', 'author']
 
 # Initialize weight
 weight = None
@@ -229,9 +242,9 @@ def train():
     for i, batch in enumerate(tqdm(train_loader)):
         batch = batch.to(DEVICE)
         
-        edge_label_index = batch['author', 'difference_co_author', 'author'].edge_label_index
-        edge_label = batch['author', 'difference_co_author', 'author'].edge_label
-        del batch['author', 'difference_co_author', 'author']
+        edge_label_index = batch['author', 'author'].edge_label_index
+        edge_label = batch['author', 'author'].edge_label
+        del batch['author', 'co_author', 'author']
         
         # Add user node features for message passing:
         batch['author'].x = embedding_author(batch['author'].n_id)
@@ -258,9 +271,9 @@ def test(loader):
     for i, batch in enumerate(tqdm(loader)):
         batch = batch.to(DEVICE)
         
-        edge_label_index = batch['author', 'difference_co_author', 'author'].edge_label_index
-        edge_label = batch['author', 'difference_co_author', 'author'].edge_label
-        del batch['author', 'difference_co_author', 'author']
+        edge_label_index = batch['author', 'author'].edge_label_index
+        edge_label = batch['author', 'author'].edge_label
+        del batch['author', 'co_author', 'author']
         
         # Add user node features for message passing:
         batch['author'].x = embedding_author(batch['author'].n_id)
@@ -343,4 +356,4 @@ for epoch in range(first_epoch, 500):
     # Print epoch results
     print(f'Epoch: {epoch:02d}, Loss: {train_loss:.4f} - {loss_val:.4f}, Accuracy: {val_acc:.4f}')
     
-generate_graph(training_loss_list, validation_loss_list, training_accuracy_list, validation_accuracy_list, confusion_matrix)
+generate_graph(PATH, training_loss_list, validation_loss_list, training_accuracy_list, validation_accuracy_list, confusion_matrix)
