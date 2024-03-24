@@ -24,7 +24,8 @@ DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 learning_rate = float(sys.argv[1])
 use_infosphere = sys.argv[2].lower() == 'true'
 infosphere_number = int(sys.argv[3])
-only_new = sys.argv[4].lower() == 'true'
+infosphere_type = int(sys.argv[4])
+only_new = sys.argv[5].lower() == 'true'
 
 # Current timestamp for model saving
 current_date = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
@@ -40,21 +41,26 @@ data = dataset[0]
 
 # Add infosphere data if requested
 if use_infosphere:
-    fold = [0, 1, 2, 3, 4]
-    fold_string = '_'.join(map(str, fold))
-    name_infosphere = f"{infosphere_number}_infosphere_{fold_string}_{YEAR}_noisy.pt"
+    if infosphere_type == 0:
+        fold = [0, 1, 2, 3, 4]
+        fold_string = '_'.join(map(str, fold))
+        name_infosphere = f"{infosphere_number}_infosphere_{fold_string}_{YEAR}_noisy.pt"
 
-    # Load infosphere
-    if os.path.exists(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}"):
-        infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}")
-        data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(infosphere_edges[CITES])
-        data['paper', 'infosphere_cites', 'paper'].edge_label = None
-        data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(infosphere_edges[WRITES])
-        data['author', 'infosphere_writes', 'paper'].edge_label = None
-        data['paper', 'infosphere_about', 'topic'].edge_index = coalesce(infosphere_edges[ABOUT])
-        data['paper', 'infosphere_about', 'topic'].edge_label = None
+        # Load infosphere
+        if os.path.exists(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}"):
+            infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}")
+            data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(infosphere_edges[CITES])
+            data['paper', 'infosphere_cites', 'paper'].edge_label = None
+            data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(infosphere_edges[WRITES])
+            data['author', 'infosphere_writes', 'paper'].edge_label = None
+            data['paper', 'infosphere_about', 'topic'].edge_index = coalesce(infosphere_edges[ABOUT])
+            data['paper', 'infosphere_about', 'topic'].edge_label = None
+        else:
+            raise Exception(f"{name_infosphere} not found!")
     else:
-        raise Exception(f"{name_infosphere} not found!")
+        infosphere_edge = create_infosphere_top_papers_edge_index(data, infosphere_number)
+        data['author', 'infosphere', 'paper'].edge_index = coalesce(infosphere_edge)
+        data['author', 'infosphere', 'paper'].edge_label = None
 
 # Try to predict all the future co-author or just the new one (not present in history)
 coauthor_function = generate_difference_co_author_edge_year if only_new else generate_co_author_edge_year

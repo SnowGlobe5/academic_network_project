@@ -459,6 +459,23 @@ def generate_difference_next_topic_edge_year(data, year, root):
     return difference_edge_index
 
 
+def create_infosphere_top_papers_edge_index(data, n):
+    df = pd.read_csv("../anp_data/raw/sorted_papers.csv")
+    papers = df['id'][:n].values
+    authors = data['author'].num_nodes
+    
+    # Costruisci l'edge index
+    src = []
+    dst = []
+    for author in range(authors):
+        for paper in papers:
+            src.append(author)
+            dst.append(paper)
+    edge_index = torch.tensor([src, dst])
+    print(edge_index)
+    return edge_index
+
+
 def anp_save(model, path, epoch, loss, loss_val, accuracy):
     """
   Save the model and associated information.
