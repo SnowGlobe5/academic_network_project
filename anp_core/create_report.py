@@ -16,7 +16,7 @@ from PIL import Image as PILImage
 base_folder = "/home/sguidotti/academic_network_project/anp_models"
 
 # Dizionario per organizzare i risultati
-results = defaultdict(list)
+results = [defaultdict(list), defaultdict(list)]
 
 # Funzione per leggere il file info.json
 def read_info_json(folder):
@@ -62,6 +62,7 @@ for experiment_folder in os.listdir(base_folder):
         continue
 
     # Estraiamo i valori di interesse
+    prediction_type = info.get("only_new", "N/A")
     lr = info.get("lr", "N/A")
     use_infosphere = info.get("use_infosphere", "N/A")
     validation_accuracy = log_data["validation_accuracy_list"][-1] if "validation_accuracy_list" in log_data else "N/A"
@@ -90,7 +91,7 @@ for experiment_folder in os.listdir(base_folder):
                 images.append(temp_image_path)
 
     # Aggiungiamo i dati al dizionario dei risultati
-    results[(float(lr), use_infosphere)].append({
+    results[prediction_type][(float(lr), use_infosphere)].append({
         "title": title,
         "body": body,
         "images": images
@@ -111,48 +112,51 @@ elements.append(Paragraph("Report degli Esperimenti", style_title))
 elements.append(Spacer(1, 12))
 
 # Ordiniamo i risultati per Learning Rate
-sorted_results = sorted(results.items(), key=lambda x: x[0][0])
+sorted_results = [[], []]
+for only_new in range(2):
+    sorted_results[only_new] = sorted(results[only_new].items(), key=lambda x: x[0][0])
 
 # Creazione del report per ogni learning rate e infosphere
-for key, entries in sorted_results:
-    elements.append(Paragraph(f"Learning Rate: {key[0]}, Use Infosphere: {key[1]}", style_body))
-    elements.append(Spacer(1, 6))
+for only_new in range(2):
+    elements.append(Paragraph("All co-authors" if only_new else "Only new", style_title))
+    for key, entries in sorted_results[only_new]:
+        elements.append(Paragraph(f"Learning Rate: {key[0]}, Use Infosphere: {key[1]}", style_title))
+        elements.append(Spacer(1, 6))
 
+        for entry in entries:
+            elements.append(Paragraph(entry["title"], style_body))
+            elements.append(Paragraph(entry["body"], style_body))
 
+            # Lista delle immagini da inserire in questa sezione
+            images_section = []
+            
+            # Aggiungiamo le immagini alla lista della sezione corrente
+            for image_path in entry["images"]:
+                image = PILImage.open(image_path)
+                width, height = image.size
+                max_width = 200  # Width in points
+                aspect = height / width
+                adjusted_width = max_width
+                adjusted_height = adjusted_width * aspect
+                image_obj = Image(image_path, width=adjusted_width, height=adjusted_height)
+                images_section.append(image_obj)
 
-    for entry in entries:
-        elements.append(Paragraph(entry["title"], style_body))
-        elements.append(Paragraph(entry["body"], style_body))
+            # Creiamo una tabella per visualizzare le immagini orizzontalmente
+            if images_section:
+                table_data = [images_section]
+                table = Table(table_data, colWidths=len(images_section) * [200])
+                elements.append(table)
 
-        # Lista delle immagini da inserire in questa sezione
-        images_section = []
-        
-        # Aggiungiamo le immagini alla lista della sezione corrente
-        for image_path in entry["images"]:
-            image = PILImage.open(image_path)
-            width, height = image.size
-            max_width = 200  # Width in points
-            aspect = height / width
-            adjusted_width = max_width
-            adjusted_height = adjusted_width * aspect
-            image_obj = Image(image_path, width=adjusted_width, height=adjusted_height)
-            images_section.append(image_obj)
-
-        # Creiamo una tabella per visualizzare le immagini orizzontalmente
-        if images_section:
-            table_data = [images_section]
-            table = Table(table_data, colWidths=len(images_section) * [200])
-            elements.append(table)
-
-        elements.append(Spacer(1, 12))
+            elements.append(Spacer(1, 12))
 
 # Costruiamo il PDF
 doc.build(elements)
 
 # Rimuoviamo le immagini temporanee
-for key, entries in results.items():
-    for entry in entries:
-        for image_path in entry["images"]:
-            os.remove(image_path)
+for only_new in range(2):
+    for key, entries in results[only_new].items():
+        for entry in entries:
+            for image_path in entry["images"]:
+                os.remove(image_path)
 
 print("Il report è stato creato con successo.")
