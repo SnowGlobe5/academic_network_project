@@ -15,5 +15,5 @@ The idea is to use it in the following order:
 ## ANP NN
 `anp_nn` contains models for predictive tasks using Graph Neural Networks (GNNs). Currently, it focuses on co-author prediction and a preliminary aspect of next-topic prediction within the Academic Network Project (ANP). These models leverage graph-based learning to forecast collaboration patterns among authors and anticipate future research topics within the academic sphere.
 
-## Seedgraph backup
-`seedgraph_backup` contains some backups generated from `anp_infosphere_creation`
+
+## [Seedgraph backup](https://drive.google.com/drive/folders/1Zn4QicKTylX0TPE6R8eUp7N-BlkKhMsh?usp=drive_link)
