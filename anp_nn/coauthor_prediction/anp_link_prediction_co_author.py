@@ -32,7 +32,7 @@ current_date = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
 PATH = f"../anp_models/{os.path.basename(sys.argv[0][:-3])}_{current_date}/"
 os.makedirs(PATH)
 with open(PATH + 'info.json', 'w') as json_file:
-    json.dump({'lr': learning_rate, 'use_infosphere': use_infosphere, 'infosphere_expansion': infosphere_number,
+    json.dump({'lr': learning_rate, 'use_infosphere': use_infosphere, 'infosphere_type': infosphere_type, 'infosphere_expansion': infosphere_number,
                'only_new': only_new, 'data': []}, json_file)
 
 # Create ANP dataset
