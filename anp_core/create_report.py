@@ -1,19 +1,23 @@
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfbase import pdfmetrics
 import os
 import json
 import re
 from collections import defaultdict
 from pdf2image import convert_from_path
 from PIL import Image as PILImage
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER
 
 # Folder containing the experiment folders
 base_folder = "/home/sguidotti/academic_network_project/anp_models"
+
+date_lower = "2024_02_01"
+date_upper = "2024_04_01"
+
+# Convert date strings to integers for comparison
+date_lower_int = int(date_lower.replace("_", ""))
+date_upper_int = int(date_upper.replace("_", ""))
 
 # Dictionary to organize the results
 results = [defaultdict(list), defaultdict(list)]
@@ -25,6 +29,8 @@ def read_info_json(folder):
         with open(info_file) as f:
             info_data = json.load(f)
             del info_data['data']
+            if not info_data['use_infosphere']:
+                del info_data['infosphere_expansion']
             return info_data
     return None
 
@@ -38,7 +44,7 @@ def read_log_json(folder):
     return None
 
 # Regex for the folder format
-folder_pattern = re.compile(r'anp_link_prediction_co_author_\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}')
+folder_pattern = re.compile(r'anp_link_prediction_co_author_(\d{4}_\d{2}_\d{2})_\d{2}_\d{2}_\d{2}')
 
 # Scan all the experiment folders
 for experiment_folder in os.listdir(base_folder):
@@ -46,8 +52,13 @@ for experiment_folder in os.listdir(base_folder):
     if not os.path.isdir(experiment_path):
         continue
 
-    # Check if the folder name matches the desired format
-    if not folder_pattern.match(experiment_folder):
+    # Check if the folder name matches the desired format and falls within the date range
+    match = folder_pattern.match(experiment_folder)
+    if not match:
+        continue
+
+    folder_date = match.group(1)
+    if not (date_lower_int <= int(folder_date.replace("_", "")) <= date_upper_int):
         continue
 
     # Read info.json
@@ -110,10 +121,10 @@ elements = []
 elements.append(Paragraph("Experiment Report", style_title))
 elements.append(Spacer(1, 12))
 
-# Sort the results by Learning Rate
+# Sort the results by Learning Rate and Use Infosphere
 sorted_results = [[], []]
 for only_new in range(2):
-    sorted_results[only_new] = sorted(results[only_new].items(), key=lambda x: x[0][0])
+    sorted_results[only_new] = sorted(results[only_new].items(), key=lambda x: (x[0][0], x[0][1]))
 
 # Create the report for each learning rate and infosphere
 for only_new in range(2):
