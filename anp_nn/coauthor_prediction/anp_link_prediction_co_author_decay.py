@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch_geometric.transforms as T
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from academic_network_project.anp_core.anp_dataset import ANPDataset
 from academic_network_project.anp_core.anp_utils import *
 from torch.nn import Linear
@@ -180,12 +181,12 @@ class Model(torch.nn.Module):
 # Initialize model, optimizer, scheduler, and embeddings
 model = Model(hidden_channels=32).to(DEVICE)
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.1)  # Adjust these parameters as needed.
+lr_scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
 embedding_author = torch.nn.Embedding(data["author"].num_nodes, 32).to(DEVICE)
 embedding_topic = torch.nn.Embedding(data["topic"].num_nodes, 32).to(DEVICE)
 
 
-# Training and Testing Functions with scheduler step
+# Training and Testing Functions
 def train():
     model.train()
     total_examples = total_correct = total_loss = 0
@@ -205,7 +206,6 @@ def train():
         loss = F.binary_cross_entropy_with_logits(pred, target)
         loss.backward()
         optimizer.step()
-        scheduler.step()
 
         total_loss += float(loss) * pred.numel()
         total_examples += pred.numel()
@@ -281,6 +281,8 @@ for epoch in range(1, 500):
         counter = 0  # Reset the counter if validation loss improves
     else:
         counter += 1
+        if counter >= 5: 
+            lr_scheduler.step(val_loss)
 
     # Early stopping check
     if counter >= patience:
