@@ -459,12 +459,11 @@ def generate_difference_next_topic_edge_year(data, year, root):
     return difference_edge_index
 
 
-def create_infosphere_top_papers_edge_index(data, n):
+def create_infosphere_top_papers_edge_index(data, n, year):
     df = pd.read_csv("../anp_data/raw/sorted_papers.csv")
-    papers = df['id'][:n].values
+    papers = df[df['year'] <= year]['id'][:n].values
     authors = data['author'].num_nodes
     
-    # Costruisci l'edge index
     src = []
     dst = []
     for author in range(authors):
@@ -475,6 +474,24 @@ def create_infosphere_top_papers_edge_index(data, n):
     print(edge_index)
     return edge_index
 
+def create_infosphere_top_papers_per_topic_edge_index(data, topics_per_author, papers_per_topic, year):
+    df_papers = pd.read_csv("../anp_data/raw/sorted_papers_about.csv")
+    df_topic = pd.read_csv(f"../anp_data/raw/sorted_authors_topics_{2019}.csv")
+    authors = data['author'].num_nodes
+    
+    # Costruisci l'edge index
+    src = []
+    dst = []
+    for author in range(authors):
+        topics = df_topic[df_topic['author_id'] == author]['topic_id'][:topics_per_author].values
+        for topic in topics:
+            papers = df_papers[(df_papers['topic_id'] == topic) & (df_papers['year'] == year)]['id'][:papers_per_topic].values
+            for paper in papers:
+                src.append(author)
+                dst.append(paper)
+    edge_index = torch.tensor([src, dst])
+    print(edge_index)
+    return edge_index
 
 def anp_save(model, path, epoch, loss, loss_val, accuracy):
     """
