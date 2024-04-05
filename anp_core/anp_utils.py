@@ -474,24 +474,36 @@ def create_infosphere_top_papers_edge_index(data, n, year):
     print(edge_index)
     return edge_index
 
+
 def create_infosphere_top_papers_per_topic_edge_index(data, topics_per_author, papers_per_topic, year):
+    # Leggi i dati una sola volta
     df_papers = pd.read_csv("../anp_data/raw/sorted_papers_about.csv")
     df_topic = pd.read_csv(f"../anp_data/raw/sorted_authors_topics_{2019}.csv")
     authors = data['author'].num_nodes
     
-    # Costruisci l'edge index
+    author_topics = {}
+    for author_id in range(authors):
+        topics = df_topic[df_topic['author_id'] == author_id]['topic_id'][:topics_per_author].values
+        author_topics[author_id] = topics
+    
     src = []
     dst = []
-    for author in range(authors):
-        topics = df_topic[df_topic['author_id'] == author]['topic_id'][:topics_per_author].values
-        for topic in topics:
-            papers = df_papers[(df_papers['topic_id'] == topic) & (df_papers['year'] == year)]['id'][:papers_per_topic].values
-            for paper in papers:
-                src.append(author)
-                dst.append(paper)
+    time = datetime.now()
+    
+    df_papers_year = df_papers[df_papers['year'] == year]
+    
+    for author_id, topics in author_topics.items():
+        if author_id % 1000 == 0:
+            print(f"Author edge processed: {author_id+1}/{authors} - {(author_id+1) / authors * 100}% - {str((datetime.now() - time)*10000)} - {str((datetime.now() - time)*10000 / (author_id + 1) * (authors - author_id))}")
+        papers = df_papers_year[df_papers_year['topic_id'].isin(topics)]['id'][:papers_per_topic].values
+        
+        src.extend([author_id] * len(papers))
+        dst.extend(papers)
+    
     edge_index = torch.tensor([src, dst])
     print(edge_index)
     return edge_index
+
 
 def anp_save(model, path, epoch, loss, loss_val, accuracy):
     """

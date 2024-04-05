@@ -66,6 +66,18 @@ if use_infosphere:
     elif infosphere_type == 3:
         infosphere_numbers = infosphere_number.strip()
         arg_list = ast.literal_eval(infosphere_numbers)
+        if os.path.exists(f"{ROOT}/processed/edge_infosphere_3_{arg_list[0]}_{arg_list[1]}.pt"):
+            print("Infosphere 3 edge found!")
+            data['author', 'infosphere', 'paper'].edge_index = torch.load(f"{ROOT}/processed/edge_infosphere_3_{arg_list[0]}_{arg_list[1]}.pt")
+            data['author', 'infosphere', 'paper'].edge_label = None
+        else:
+            print("Generating co-author edge...")
+            infosphere_edge = create_infosphere_top_papers_per_topic_edge_index(data, arg_list[0], arg_list[1], YEAR)
+            data['author', 'infosphere', 'paper'].edge_index = coalesce(infosphere_edge)
+            data['author', 'infosphere', 'paper'].edge_label = None
+            torch.save(data['author', 'infosphere', 'paper'].edge_index, f"{ROOT}/processed/edge_infosphere_3_{arg_list[0]}_{arg_list[1]}.pt")
+
+       
         infosphere_edge = create_infosphere_top_papers_per_topic_edge_index(data, arg_list[0], arg_list[1], YEAR)
         data['author', 'infosphere', 'paper'].edge_index = coalesce(infosphere_edge)
         data['author', 'infosphere', 'paper'].edge_label = None
