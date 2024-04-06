@@ -487,7 +487,6 @@ def create_infosphere_top_papers_per_topic_edge_index(data, topics_per_author, p
     
     src = []
     dst = []
-    time = datetime.now()
     for author in range(authors):
         if author in topics_dict:
             topics = topics_dict[author][:topics_per_author]
