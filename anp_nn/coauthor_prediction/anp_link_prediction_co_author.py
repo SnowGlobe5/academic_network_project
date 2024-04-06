@@ -71,7 +71,7 @@ if use_infosphere:
             data['author', 'infosphere', 'paper'].edge_index = torch.load(f"{ROOT}/processed/edge_infosphere_3_{arg_list[0]}_{arg_list[1]}.pt")
             data['author', 'infosphere', 'paper'].edge_label = None
         else:
-            print("Generating co-author edge...")
+            print("Generating infosphere 3 edge...")
             infosphere_edge = create_infosphere_top_papers_per_topic_edge_index(data, arg_list[0], arg_list[1], YEAR)
             data['author', 'infosphere', 'paper'].edge_index = coalesce(infosphere_edge)
             data['author', 'infosphere', 'paper'].edge_label = None
