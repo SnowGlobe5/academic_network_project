@@ -476,32 +476,29 @@ def create_infosphere_top_papers_edge_index(data, n, year):
 
 
 def create_infosphere_top_papers_per_topic_edge_index(data, topics_per_author, papers_per_topic, year):
-    # Leggi i dati una sola volta
     df_papers = pd.read_csv("../anp_data/raw/sorted_papers_about.csv")
+    df_papers_filtered = df_papers[df_papers['year'] <= year]
     df_topic = pd.read_csv(f"../anp_data/raw/sorted_authors_topics_{2019}.csv")
-    authors = data['author'].num_nodes
     
-    author_topics = {}
-    for author_id in range(authors):
-        topics = df_topic[df_topic['author_id'] == author_id]['topic_id'][:topics_per_author].values
-        author_topics[author_id] = topics
+    papers_dict = df_papers_filtered.groupby('topic_id')['id'].apply(list).to_dict()
+    topics_dict = df_topic.groupby('author_id')['topic_id'].apply(list).to_dict()
+    
+    authors = data['author'].num_nodes
     
     src = []
     dst = []
     time = datetime.now()
+    for author in range(authors):
+        if author in topics_dict:
+            topics = topics_dict[author][:topics_per_author]
+            
+            for topic in topics:
+                papers = papers_dict[topic][:papers_per_topic]
+                for paper in papers:
+                    src.append(author)
+                    dst.append(paper)
     
-    df_papers_year = df_papers[df_papers['year'] == year]
-    
-    for author_id, topics in author_topics.items():
-        if author_id % 1000 == 0:
-            print(f"Author edge processed: {author_id+1}/{authors} - {(author_id+1) / authors * 100}% - {str((datetime.now() - time)*10000)} - {str((datetime.now() - time)*10000 / (author_id + 1) * (authors - author_id))}")
-        papers = df_papers_year[df_papers_year['topic_id'].isin(topics)]['id'][:papers_per_topic].values
-        
-        src.extend([author_id] * len(papers))
-        dst.extend(papers)
-    
-    edge_index = torch.tensor([src, dst])
-    print(edge_index)
+    edge_index = torch.tensor([src, dst], dtype=torch.long)
     return edge_index
 
 
