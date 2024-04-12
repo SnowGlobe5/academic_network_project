@@ -14,6 +14,8 @@ base_folder = "/home/sguidotti/academic_network_project/anp_models"
 
 date_lower = "2024_02_01"
 date_upper = "2024_04_01"
+lr_lower = 0.00001
+lr_upper = 0.000005
 
 # Convert date strings to integers for comparison
 date_lower_int = int(date_lower.replace("_", ""))
@@ -74,6 +76,10 @@ for experiment_folder in os.listdir(base_folder):
     # Extract the values of interest
     prediction_type = info.get("only_new", "N/A")
     lr = info.get("lr", "N/A")
+
+    if not (lr_upper <= float(lr) <= lr_lower):
+        continue
+
     use_infosphere = info.get("use_infosphere", "N/A")
     validation_accuracy = log_data["validation_accuracy_list"][-1] if "validation_accuracy_list" in log_data else "N/A"
 
@@ -108,7 +114,7 @@ for experiment_folder in os.listdir(base_folder):
     })
 
 # Create the PDF
-doc = SimpleDocTemplate("report.pdf", pagesize=letter)
+doc = SimpleDocTemplate(f"report_{date_lower}_{date_upper}_{lr_lower}_{lr_upper}.pdf", pagesize=letter)
 styles = getSampleStyleSheet()
 style_title = styles["Title"]
 style_body = styles["Normal"]
