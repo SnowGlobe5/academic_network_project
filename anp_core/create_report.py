@@ -13,16 +13,17 @@ from reportlab.lib.enums import TA_CENTER
 base_folder = "/home/sguidotti/academic_network_project/anp_models"
 
 date_lower = "2024_02_01"
-date_upper = "2024_04_01"
+date_upper = "2024_05_01"
 lr_lower = 0.00001
 lr_upper = 0.000005
 
+infosphere_string = ["Baseline (No infosphere)", "Future infosphere", "Infosphere TOP PAPER", "Infosphere TOP PAPER PER TOPIC"]
 # Convert date strings to integers for comparison
 date_lower_int = int(date_lower.replace("_", ""))
 date_upper_int = int(date_upper.replace("_", ""))
 
 # Dictionary to organize the results
-results = [defaultdict(list), defaultdict(list)]
+results = [[{}, {}, {}, {}], [{}, {}, {}, {}]]
 
 # Function to read the info.json file
 def read_info_json(folder):
@@ -31,8 +32,8 @@ def read_info_json(folder):
         with open(info_file) as f:
             info_data = json.load(f)
             del info_data['data']
-            if not info_data['use_infosphere']:
-                del info_data['infosphere_expansion']
+            if info_data['infosphere_type'] == 0:
+                del info_data['infosphere_parameters']
             return info_data
     return None
 
@@ -80,19 +81,24 @@ for experiment_folder in os.listdir(base_folder):
     if not (lr_upper <= float(lr) <= lr_lower):
         continue
 
-    use_infosphere = info.get("use_infosphere", "N/A")
     validation_accuracy = log_data["validation_accuracy_list"][-1] if "validation_accuracy_list" in log_data else "N/A"
 
+    # Calculate highest accuracy and average of last 10 epochs
+    highest_accuracy = max(log_data["validation_accuracy_list"]) if "validation_accuracy_list" in log_data else "N/A"
+    avg_last_10_epochs = sum(log_data["validation_accuracy_list"][-10:]) / 10 if "validation_accuracy_list" in log_data and len(log_data["validation_accuracy_list"]) >= 10 else "N/A"
+
     # Create a title for the report
-    title = f"Folder: {experiment_folder}"
-    
+    folder = f"Folder: {experiment_folder}"
+
     # Create the body of the report
-    body = f"Learning Rate: {lr}\n"
-    body += f"Use Infosphere: {use_infosphere}\n"
-    body += f"Validation Accuracy: {validation_accuracy}\n"
-    body += "Info JSON:\n"
-    body += json.dumps(info, indent=4)
-    
+    body = f"Learning Rate: {lr},\n"
+    body += f"Last Validation Accuracy: {validation_accuracy},\n"
+    body += f"Highest Accuracy: {highest_accuracy},\n"
+    body += f"Average of Last 10 Epochs: {avg_last_10_epochs}\n"
+
+    infosphere_parameters = info.get("infosphere_parameters", None)
+
+
     # Save the images if they exist
     images = []
     for image_name in ["anp_link_prediction_co_author_accuracy.pdf", "anp_link_prediction_co_author_CM.pdf", "anp_link_prediction_co_author_loss.pdf"]:
@@ -107,71 +113,82 @@ for experiment_folder in os.listdir(base_folder):
                 images.append(temp_image_path)
 
     # Add the data to the results dictionary
-    results[prediction_type][(float(lr), use_infosphere)].append({
-        "title": title,
+    infotype = info["infosphere_type"] if info.get("infosphere_type") else 0
+    if not results[prediction_type][infotype].get(infosphere_parameters):
+        results[prediction_type][infotype][infosphere_parameters] = []
+    results[prediction_type][infotype][infosphere_parameters].append({
+        "folder": folder,
         "body": body,
-        "images": images
+        "images": images,
+        "learning_rate": lr
     })
 
 # Create the PDF
 doc = SimpleDocTemplate(f"report_{date_lower}_{date_upper}_{lr_lower}_{lr_upper}.pdf", pagesize=letter)
 styles = getSampleStyleSheet()
-style_title = styles["Title"]
-style_body = styles["Normal"]
-style_body.alignment = TA_CENTER
+# style_body.alignment = TA_CENTER
 
 # List of elements to insert into the PDF
 elements = []
 
 # Header
-elements.append(Paragraph("Experiment Report", style_title))
+elements.append(Paragraph("Experiment Report", styles["Title"]))
 elements.append(Spacer(1, 12))
 
 # Sort the results by Learning Rate and Use Infosphere
-sorted_results = [[], []]
-for only_new in range(2):
-    sorted_results[only_new] = sorted(results[only_new].items(), key=lambda x: (x[0][0], x[0][1]))
+# sorted_results = [[{}, {}, {}, {}], [{}, {}, {}, {}]]
+# for only_new in range(2):
+#     for infotype in range(4):
+#         try:
+#             sorted_results[only_new][infotype] = sorted(results[only_new][infotype].items(), key=lambda x: (x[0][0], x[0][1]))
+#         except:
+#             print(f"skip {only_new}, {infotype}")
 
 # Create the report for each learning rate and infosphere
 for only_new in range(2):
-    elements.append(Paragraph("All co-authors" if only_new else "Only new", style_title))
-    for key, entries in sorted_results[only_new]:
-        elements.append(Paragraph(f"Learning Rate: {key[0]}, Use Infosphere: {key[1]}", style_title))
+    elements.append(Paragraph("Only new" if only_new else "All co-authors",  styles["Heading1"]))
+    for i, entries2 in enumerate(results[only_new]):
+        elements.append(Paragraph(f"{infosphere_string[i]}", styles["Heading2"]))
         elements.append(Spacer(1, 6))
 
-        for entry in entries:
-            elements.append(Paragraph(entry["title"], style_body))
-            elements.append(Paragraph(entry["body"], style_body))
+        for infoshere_parameter, entries in entries2.items():
+            if infoshere_parameter:
+                    elements.append(Paragraph(f"parameters: {infoshere_parameter}", styles["Heading3"]))
+            entries.sort(key=lambda x: x.get("learning_rate", 0)) 
+            for entry in entries:
+                elements.append(Paragraph(entry["body"], styles["Normal"]))
 
-            # List of images to insert in this section
-            images_section = []
-            
-            # Add the images to the current section list
-            for image_path in entry["images"]:
-                image = PILImage.open(image_path)
-                width, height = image.size
-                max_width = 200  # Width in points
-                aspect = height / width
-                adjusted_width = max_width
-                adjusted_height = adjusted_width * aspect
-                image_obj = Image(image_path, width=adjusted_width, height=adjusted_height)
-                images_section.append(image_obj)
+                # List of images to insert in this section
+                images_section = []
 
-            # Create a table to display the images horizontally
-            if images_section:
-                table_data = [images_section]
-                table = Table(table_data, colWidths=len(images_section) * [200])
-                elements.append(table)
+                # Add the images to the current section list
+                for image_path in entry["images"]:
+                    image = PILImage.open(image_path)
+                    width, height = image.size
+                    max_width = 200  # Width in points
+                    aspect = height / width
+                    adjusted_width = max_width
+                    adjusted_height = adjusted_width * aspect
+                    image_obj = Image(image_path, width=adjusted_width, height=adjusted_height)
+                    images_section.append(image_obj)
 
-            elements.append(Spacer(1, 12))
+                # Create a table to display the images horizontally
+                if images_section:
+                    table_data = [images_section]
+                    table = Table(table_data, colWidths=len(images_section) * [200])
+                    elements.append(table)
+
+                elements.append(Paragraph(entry["folder"], styles["Heading6"]))
+
+                elements.append(Spacer(1, 12))
 
 doc.build(elements)
 
 # Remove the temporary images
 for only_new in range(2):
-    for key, entries in results[only_new].items():
-        for entry in entries:
-            for image_path in entry["images"]:
-                os.remove(image_path)
+      for infoshere_parameter, entries in entries2.items():
+            for entry in entries:
+                for image_path in entry["images"]:
+                    os.remove(image_path)
 
 print("The report was successfully created.")
