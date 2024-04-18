@@ -23,17 +23,16 @@ DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 # Get command line arguments
 learning_rate = float(sys.argv[1])
-use_infosphere = sys.argv[2].lower() == 'true'
-infosphere_number = sys.argv[3]
-infosphere_type = int(sys.argv[4])
-only_new = sys.argv[5].lower() == 'true'
+infosphere_type = int(sys.argv[2])
+infosphere_parameters = sys.argv[3]
+only_new = sys.argv[4].lower() == 'true'
 
 # Current timestamp for model saving
 current_date = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
 PATH = f"../anp_models/{os.path.basename(sys.argv[0][:-3])}_{current_date}/"
 os.makedirs(PATH)
 with open(PATH + 'info.json', 'w') as json_file:
-    json.dump({'lr': learning_rate, 'use_infosphere': use_infosphere, 'infosphere_type': infosphere_type, 'infosphere_number': infosphere_number,
+    json.dump({'lr': learning_rate, 'infosphere_type': infosphere_type, 'infosphere_parameters': infosphere_parameters,
                'only_new': only_new, 'data': []}, json_file)
 
 # Create ANP dataset
@@ -41,11 +40,11 @@ dataset = ANPDataset(root=ROOT)
 data = dataset[0]
 
 # Add infosphere data if requested
-if use_infosphere:
-    if infosphere_type == 0:
+if infosphere_type != 0:
+    if infosphere_type == 1:
         fold = [0, 1, 2, 3, 4]
         fold_string = '_'.join(map(str, fold))
-        name_infosphere = f"{infosphere_number}_infosphere_{fold_string}_{YEAR}_noisy.pt"
+        name_infosphere = f"{infosphere_parameters}_infosphere_{fold_string}_{YEAR}_noisy.pt"
 
         # Load infosphere
         if os.path.exists(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}"):
@@ -58,14 +57,15 @@ if use_infosphere:
             data['paper', 'infosphere_about', 'topic'].edge_label = None
         else:
             raise Exception(f"{name_infosphere} not found!")
+        
     elif infosphere_type == 2:
-        infosphere_edge = create_infosphere_top_papers_edge_index(data, int(infosphere_number), YEAR)
+        infosphere_edge = create_infosphere_top_papers_edge_index(data, int(infosphere_parameters), YEAR)
         data['author', 'infosphere', 'paper'].edge_index = coalesce(infosphere_edge)
         data['author', 'infosphere', 'paper'].edge_label = None
 
     elif infosphere_type == 3:
-        infosphere_numbers = infosphere_number.strip()
-        arg_list = ast.literal_eval(infosphere_numbers)
+        infosphere_parameterss = infosphere_parameters.strip()
+        arg_list = ast.literal_eval(infosphere_parameterss)
         if os.path.exists(f"{ROOT}/processed/edge_infosphere_3_{arg_list[0]}_{arg_list[1]}.pt"):
             print("Infosphere 3 edge found!")
             data['author', 'infosphere', 'paper'].edge_index = torch.load(f"{ROOT}/processed/edge_infosphere_3_{arg_list[0]}_{arg_list[1]}.pt")
