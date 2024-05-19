@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch_geometric.transforms as T
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from academic_network_project.anp_core.anp_dataset import ANPDataset
 from academic_network_project.anp_core.anp_utils import *
 from torch.nn import Linear
@@ -105,7 +106,7 @@ data = T.ToUndirected()(data)
 data = data.to('cpu')
 
 # Training Data
-sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3], max_year=YEAR, keep_edges=False)
+sub_graph_train = anp_simple_filter_data(data, root=ROOT, folds=[0, 1, 2, 3], max_year=YEAR)
 transform_train = T.RandomLinkSplit(
     num_val=0,
     num_test=0,
@@ -131,7 +132,7 @@ edge_label_index = train_data['author', 'co_author', 'author'].edge_label_index
 edge_label = train_data['author', 'co_author', 'author'].edge_label
 train_loader = LinkNeighborLoader(
     data=train_data,
-    num_neighbors=[20, 10],
+    num_neighbors=[-1, 50],
     # neg_sampling_ratio=2.0,
     edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
     edge_label=edge_label,
@@ -143,7 +144,7 @@ edge_label_index = val_data['author', 'co_author', 'author'].edge_label_index
 edge_label = val_data['author', 'co_author', 'author'].edge_label
 val_loader = LinkNeighborLoader(
     data=val_data,
-    num_neighbors=[20, 10],
+    num_neighbors=[-1, 50],
     edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
     edge_label=edge_label,
     batch_size=1024,
@@ -197,9 +198,10 @@ class Model(torch.nn.Module):
         return self.decoder(z_dict, edge_label_index)
 
 
-# Initialize model, optimizer, and embeddings
+# Initialize model, optimizer, scheduler, and embeddings
 model = Model(hidden_channels=32).to(DEVICE)
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+lr_scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
 embedding_author = torch.nn.Embedding(data["author"].num_nodes, 32).to(DEVICE)
 embedding_topic = torch.nn.Embedding(data["topic"].num_nodes, 32).to(DEVICE)
 
@@ -283,7 +285,7 @@ training_accuracy_list = []
 validation_accuracy_list = []
 confusion_matrix = {'tp': 0, 'fp': 0, 'fn': 0, 'tn': 0}
 best_val_loss = np.inf
-patience = 10
+patience = 5
 counter = 0
 
 # Training Loop
@@ -299,6 +301,8 @@ for epoch in range(1, 500):
         counter = 0  # Reset the counter if validation loss improves
     else:
         counter += 1
+        if counter >= 5: 
+            lr_scheduler.step(val_loss)
 
     # Early stopping check
     if counter >= patience:
