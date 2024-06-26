@@ -12,10 +12,10 @@ from reportlab.lib.enums import TA_CENTER
 # Folder containing the experiment folders
 base_folder = "/home/sguidotti/academic_network_project/anp_models"
 
-date_lower = "2024_02_01"
-date_upper = "2024_05_01"
+date_lower = "2024_04_24"
+date_upper = "2024_05_16"
 lr_lower = 0.00001
-lr_upper = 0.000005
+lr_upper = 0.00000005
 
 infosphere_string = ["Baseline (No infosphere)", "Future infosphere", "Infosphere TOP PAPER", "Infosphere TOP PAPER PER TOPIC"]
 # Convert date strings to integers for comparison
@@ -151,9 +151,11 @@ for only_new in range(2):
         elements.append(Paragraph(f"{infosphere_string[i]}", styles["Heading2"]))
         elements.append(Spacer(1, 6))
 
-        for infoshere_parameter, entries in entries2.items():
-            if infoshere_parameter:
-                    elements.append(Paragraph(f"parameters: {infoshere_parameter}", styles["Heading3"]))
+        sorted_entries2 = dict(sorted(entries2.items(), key=lambda x: x[0]))
+
+        for infosphere_parameter, entries in sorted_entries2.items():
+            if infosphere_parameter:
+                    elements.append(Paragraph(f"parameters: {infosphere_parameter}", styles["Heading3"]))
             entries.sort(key=lambda x: x.get("learning_rate", 0)) 
             for entry in entries:
                 elements.append(Paragraph(entry["body"], styles["Normal"]))
@@ -186,7 +188,7 @@ doc.build(elements)
 
 # Remove the temporary images
 for only_new in range(2):
-      for infoshere_parameter, entries in entries2.items():
+      for infosphere_parameter, entries in entries2.items():
             for entry in entries:
                 for image_path in entry["images"]:
                     os.remove(image_path)

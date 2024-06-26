@@ -104,6 +104,9 @@ else:
 data['paper'].x = data['paper'].x.to(torch.float)
 data = T.ToUndirected()(data)
 data = data.to('cpu')
+min_vals = data['paper'].x.min(dim=0)[0]
+max_vals = data['paper'].x.max(dim=0)[0]
+
 
 # Training Data
 sub_graph_train = anp_simple_filter_data(data, root=ROOT, folds=[0, 1, 2, 3], max_year=YEAR)

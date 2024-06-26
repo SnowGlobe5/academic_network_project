@@ -1,179 +1,135 @@
-import torch
+import json
 import os
+from datetime import datetime
+
+import numpy as np
+import torch
 import torch.nn.functional as F
 import torch_geometric.transforms as T
-from torch_geometric.utils import coalesce
 from academic_network_project.anp_core.anp_dataset import ANPDataset
 from academic_network_project.anp_core.anp_utils import *
 from torch.nn import Linear
 from torch_geometric.loader import LinkNeighborLoader
 from torch_geometric.nn import SAGEConv, to_hetero
+from torch_geometric.utils import coalesce
 from tqdm import tqdm
-from datetime import datetime
 
-current_date = datetime.now().strftime("%Y-%m-%d")
-
+# Constants
 BATCH_SIZE = 4096
 YEAR = 2019
-
 ROOT = "../anp_data"
-PATH = f"../anp_models/{sys.argv[0]}_{current_date}/"
-DEVICE=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
-if sys.argv[1] == 'True':
-    use_link_split = True
-else:
-    use_link_split = False
-lr = float(sys.argv[2])
+# Get command line arguments
+learning_rate = float(sys.argv[1])
+use_infosphere = sys.argv[2].lower() == 'true'
+infosphere_number = int(sys.argv[3])
+only_new = sys.argv[4].lower() == 'true'
 
-#TODO remove
-import shutil
-try:
-    shutil.rmtree(PATH)
-except:
-    pass
+# Current timestamp for model saving
+current_date = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+PATH = f"../anp_models/{os.path.basename(sys.argv[0][:-3])}_{current_date}/"
+os.makedirs(PATH)
+with open(PATH + 'info.json', 'w') as json_file:
+    json.dump({'lr': learning_rate, 'use_infosphere': use_infosphere, 'infosphere_expansion': infosphere_number,
+               'only_new': only_new, 'data': []}, json_file)
 
 # Create ANP dataset
 dataset = ANPDataset(root=ROOT)
 data = dataset[0]
 
-fold = [0, 1, 2, 3, 4] #TODO param
-fold_string = [str(x) for x in fold]
-fold_string = '_'.join(fold_string)
+# Add infosphere data if requested
+if use_infosphere:
+    fold = [0, 1, 2, 3, 4]
+    fold_string = '_'.join(map(str, fold))
+    name_infosphere = f"{infosphere_number}_infosphere_{fold_string}_{YEAR}_noisy.pt"
 
-# Get infosphere
-if os.path.exists(f"{ROOT}/computed_infosphere/infosphere_{fold_string}_{YEAR}_expanded.pt"):
-    infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/infosphere_{fold_string}_{YEAR}_expanded.pt")
-    data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(infosphere_edges[CITES])
-    data['paper', 'infosphere_cites', 'paper'].edge_label = None
-    data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(infosphere_edges[WRITES])
-    data['author', 'infosphere_writes', 'paper'].edge_label = None
-    data['paper', 'infosphere_about', 'topic'].edge_index = coalesce(infosphere_edges[ABOUT])
-    data['paper', 'infosphere_about', 'topic'].edge_label = None
+    # Load infosphere
+    if os.path.exists(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}"):
+        infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}")
+        data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(infosphere_edges[CITES])
+        data['paper', 'infosphere_cites', 'paper'].edge_label = None
+        data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(infosphere_edges[WRITES])
+        data['author', 'infosphere_writes', 'paper'].edge_label = None
+        data['paper', 'infosphere_about', 'topic'].edge_index = coalesce(infosphere_edges[ABOUT])
+        data['paper', 'infosphere_about', 'topic'].edge_label = None
+    else:
+        raise Exception(f"{name_infosphere} not found!")
+
+# Try to predict all the future next-topic or just the new one (not present in history)
+topic_function = generate_difference_next_topic_edge_year if only_new else generate_next_topic_edge_year
+topic_year = YEAR if only_new else YEAR + 1
+topic_file = f"{ROOT}/processed/difference_next_topic_edge{topic_year}.pt" if only_new \
+    else f"{ROOT}/processed/next_topic_edge{topic_year}.pt"
+
+# Use existing next-topic edge if available, else generate
+if os.path.exists(topic_file):
+    print("Next-topic edge found!")
+    data['author', 'next_topic', 'topic'].edge_index = torch.load(topic_file)
+    data['author', 'next_topic', 'topic'].edge_label = None
 else:
-    raise Exception(f"infosphere_{fold_string}_{YEAR-1}_expanded.pt not found!!")
+    print("Generating about edge...")
+    data['author', 'next_topic', 'topic'].edge_index = topic_function(data, topic_year)
+    data['author', 'next_topic', 'topic'].edge_label = None
+    torch.save(data['author', 'next_topic', 'topic'].edge_index, topic_file)
 
-
-# Use already existing next-topic edge (if exist)
-if os.path.exists(f"{ROOT}/processed/difference_next_topic_edge{YEAR}.pt"):
-    print("Difference next-topic edge found!")
-    data['author', 'difference_next_topic', 'topic'].edge_index = torch.load(f"{ROOT}/processed/difference_next_topic_edge{YEAR}.pt")
-    data['author', 'difference_next_topic', 'topic'].edge_label = None
-else:
-    print("Generating difference next-topic edge...")
-    data['author', 'difference_next_topic', 'topic'].edge_index = generate_difference_next_topic_edge_year(data, YEAR, ROOT)
-    data['author', 'difference_next_topic', 'topic'].edge_label = None
-    torch.save(data['author', 'difference_next_topic', 'topic'].edge_index, f"{ROOT}/processed/difference_next_topic_edge{YEAR}.pt")
-
-# Make paper features float and the graph undirected
+# Convert paper features to float and make the graph undirected
 data['paper'].x = data['paper'].x.to(torch.float)
 data = T.ToUndirected()(data)
 data = data.to('cpu')
 
-if use_link_split == True:
-    sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3, 4], max_year=YEAR, keep_edges=False)
-    transform = T.RandomLinkSplit(
-    num_val=0.2,
+# Training Data
+sub_graph_train, _, _, _ = anp_filter_data(data, root=ROOT, folds=[0, 1, 2, 3], max_year=YEAR, keep_edges=False)
+transform_train = T.RandomLinkSplit(
+    num_val=0,
     num_test=0,
-    disjoint_train_ratio=0.3,
-    neg_sampling_ratio=2.0,
-    add_negative_train_samples=False,
-    edge_types=('author', 'difference_next_topic', 'topic')
-    )
-    train_data, val_data, _= transform(data)
+    neg_sampling_ratio=1.0,
+    add_negative_train_samples=True,
+    edge_types=('author', 'next_topic', 'topic')
+)
+train_data, _, _ = transform_train(sub_graph_train)
 
-    # Define seed edges:
-    edge_label_index = train_data['author', 'difference_next_topic', 'topic'].edge_label_index
-    edge_label = train_data['author', 'difference_next_topic', 'topic'].edge_label
-    train_loader = LinkNeighborLoader(
-        data=train_data,
-        num_neighbors=[20, 10],
-        neg_sampling_ratio=2.0,
-        edge_label_index=(('author', 'difference_next_topic', 'topic'), edge_label_index),
-        edge_label=edge_label,
-        batch_size=256,
-        shuffle=True,
-    )
+# Validation Data
+sub_graph_val = anp_simple_filter_data(data, root=ROOT, folds=[4], max_year=YEAR)
+transform_val = T.RandomLinkSplit(
+    num_val=0,
+    num_test=0,
+    neg_sampling_ratio=1.0,
+    add_negative_train_samples=True,
+    edge_types=('author', 'next_topic', 'topic')
+)
+val_data, _, _ = transform_val(sub_graph_val)
 
-    edge_label_index = val_data['author', 'difference_next_topic', 'topic'].edge_label_index
-    edge_label = val_data['author', 'difference_next_topic', 'topic'].edge_label
-    val_loader = LinkNeighborLoader(
-        data=val_data,
-        num_neighbors=[20, 10],
-        edge_label_index=(('author', 'difference_next_topic', 'topic'), edge_label_index),
-        edge_label=edge_label,
-        batch_size=3 * 256,
-        shuffle=False,
-    )
-else:
-    # Train
-    # Filter training data
-    sub_graph_train= anp_simple_filter_data(data, root=ROOT, folds=[0, 1, 2, 3], max_year=YEAR)    
-    #sub_graph_train = sub_graph_train.to(DEVICE)
+# Define seed edges:
+edge_label_index = train_data['author', 'next_topic', 'topic'].edge_label_index
+edge_label = train_data['author', 'next_topic', 'topic'].edge_label
+train_loader = LinkNeighborLoader(
+    data=train_data,
+    num_neighbors=[20, 10],
+    # neg_sampling_ratio=2.0,
+    edge_label_index=(('author', 'next_topic', 'topic'), edge_label_index),
+    edge_label=edge_label,
+    batch_size=1024,
+    shuffle=True,
+)
 
-    transform = T.RandomLinkSplit(
-        num_val=0,
-        num_test=0,
-        #disjoint_train_ratio=0.3,
-        #neg_sampling_ratio=2.0,
-        neg_sampling_ratio=1.0,
-        add_negative_train_samples=True,
-        edge_types=('author', 'difference_next_topic', 'topic')
-    )
-    train_data, _, _= transform(sub_graph_train)
-
-
-    # Validation
-    # Filter validation data
-    sub_graph_val= anp_simple_filter_data(data, root=ROOT, folds=[4], max_year=YEAR)  
-    #sub_graph_val = sub_graph_val.to(DEVICE)
-
-    transform = T.RandomLinkSplit(
-        num_val=0,
-        num_test=0,
-        #neg_sampling_ratio=2.0,
-        neg_sampling_ratio=1.0,
-        add_negative_train_samples=True,
-        edge_types=('author', 'difference_next_topic', 'topic')
-    )
-    val_data, _, _= transform(sub_graph_val)
-
-    # Define seed edges:
-    edge_label_index = train_data['author', 'difference_next_topic', 'topic'].edge_label_index
-    edge_label = train_data['author', 'difference_next_topic', 'topic'].edge_label
-    train_loader = LinkNeighborLoader(
-        data=train_data,
-        num_neighbors=[20, 10],
-        #neg_sampling_ratio=2.0,
-        edge_label_index=(('author', 'difference_next_topic', 'topic'), edge_label_index),
-        edge_label=edge_label,
-        batch_size=1024,
-        shuffle=True,
-    )
-
-    edge_label_index = val_data['author', 'difference_next_topic', 'topic'].edge_label_index
-    edge_label = val_data['author', 'difference_next_topic', 'topic'].edge_label
-    val_loader = LinkNeighborLoader(
-        data=val_data,
-        num_neighbors=[20, 10],
-        edge_label_index=(('author', 'difference_next_topic', 'topic'), edge_label_index),
-        edge_label=edge_label,
-        batch_size=1024,
-        shuffle=False,
-    )
+edge_label_index = val_data['author', 'next_topic', 'topic'].edge_label_index
+edge_label = val_data['author', 'next_topic', 'topic'].edge_label
+val_loader = LinkNeighborLoader(
+    data=val_data,
+    num_neighbors=[20, 10],
+    edge_label_index=(('author', 'next_topic', 'topic'), edge_label_index),
+    edge_label=edge_label,
+    batch_size=1024,
+    shuffle=False,
+)
 
 # Delete the next-topic edge (data will be used for data.metadata())
-del data['author', 'difference_next_topic', 'topic']
-
-# Initialize weight
-weight = None
+del data['author', 'next_topic', 'topic']
+del data['topic', 'rev_next_topic', 'author']
 
 
-def weighted_mse_loss(pred, target, weight=None):
-    weight = 1. if weight is None else weight[target].to(pred.dtype)
-    return (weight * (pred - target.to(pred.dtype)).pow(2)).mean()
-
-
+# Define model components
 class GNNEncoder(torch.nn.Module):
     def __init__(self, hidden_channels, out_channels):
         super().__init__()
@@ -181,14 +137,12 @@ class GNNEncoder(torch.nn.Module):
         self.conv2 = SAGEConv((-1, -1), out_channels)
         self.conv3 = SAGEConv((-1, -1), out_channels)
         self.conv4 = SAGEConv((-1, -1), out_channels)
-        self.conv5 = SAGEConv((-1, -1), out_channels)
 
     def forward(self, x, edge_index):
         x = self.conv1(x, edge_index).relu()
         x = self.conv2(x, edge_index).relu()
         x = self.conv3(x, edge_index).relu()
-        x = self.conv4(x, edge_index).relu()
-        x = self.conv5(x, edge_index)
+        x = self.conv4(x, edge_index)
         return x
 
 
@@ -196,20 +150,13 @@ class EdgeDecoder(torch.nn.Module):
     def __init__(self, hidden_channels):
         super().__init__()
         self.lin1 = Linear(2 * hidden_channels, hidden_channels)
-        self.lin2 = Linear(hidden_channels, hidden_channels)
-        self.lin3 = Linear(hidden_channels, hidden_channels)
-        self.lin4 = Linear(hidden_channels, hidden_channels)
-        self.lin5 = Linear(hidden_channels, 1)
+        self.lin2 = Linear(hidden_channels, 1)
 
     def forward(self, z_dict, edge_label_index):
         row, col = edge_label_index
-        z = torch.cat([z_dict['author'][row], z_dict['topic'][col]], dim=-1)
-
+        z = torch.cat([z_dict['author'][row], z_dict['topic'][col]], dim=-1) 
         z = self.lin1(z).relu()
-        z = self.lin2(z).relu()
-        z = self.lin3(z).relu()
-        z = self.lin4(z).relu()
-        z = self.lin5(z)
+        z = self.lin2(z)
         return z.view(-1)
 
 
@@ -225,122 +172,123 @@ class Model(torch.nn.Module):
         return self.decoder(z_dict, edge_label_index)
 
 
-# Create model, optimizer, and move model to device
-# If exist load last checkpoint
-if os.path.exists(PATH):
-    model, first_epoch = anp_load(PATH)
-    first_epoch += 1
-else:
-    model = Model(hidden_channels=32).to(DEVICE)
-    os.makedirs(PATH)
-    with open(PATH + 'info.json', 'w') as json_file:
-        json.dump([], json_file)
-    first_epoch = 1
-optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+# Initialize model, optimizer, and embeddings
+model = Model(hidden_channels=32).to(DEVICE)
+optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 embedding_author = torch.nn.Embedding(data["author"].num_nodes, 32).to(DEVICE)
 embedding_topic = torch.nn.Embedding(data["topic"].num_nodes, 32).to(DEVICE)
 
+
+# Training and Testing Functions
 def train():
     model.train()
-    total_examples = total_loss = 0
+    total_examples = total_correct = total_loss = 0
     for i, batch in enumerate(tqdm(train_loader)):
         batch = batch.to(DEVICE)
-        
         edge_label_index = batch['author', 'topic'].edge_label_index
         edge_label = batch['author', 'topic'].edge_label
-        del batch['author', 'difference_next_topic', 'topic']
-        
-        # Add user node features for message passing:
+        del batch['author', 'next_topic', 'topic']
+        del batch['topic', 'rev_next_topic', 'author']
+
+        # Add node embeddings for message passing
         batch['author'].x = embedding_author(batch['author'].n_id)
         batch['topic'].x = embedding_topic(batch['topic'].n_id)
 
         optimizer.zero_grad()
         pred = model(batch.x_dict, batch.edge_index_dict, edge_label_index)
         target = edge_label
-        loss = weighted_mse_loss(pred, target, weight)
+        loss = F.binary_cross_entropy_with_logits(pred, target)
         loss.backward()
         optimizer.step()
-        total_examples += len(pred)
-        total_loss += float(loss) * len(pred)
 
-    return total_loss / total_examples
+        total_loss += float(loss) * pred.numel()
+        total_examples += pred.numel()
+
+        # Calculate accuracy
+        pred = pred.clamp(min=0, max=1)
+        total_correct += int((torch.round(pred, decimals=0) == target).sum())
+
+    return total_correct / total_examples, total_loss / total_examples
 
 
 @torch.no_grad()
 def test(loader):
     model.eval()
-    total_examples = total_mse = total_correct = total_loss = 0
+    total_examples = total_correct = total_loss = 0
     for i, batch in enumerate(tqdm(loader)):
         batch = batch.to(DEVICE)
-        
         edge_label_index = batch['author', 'topic'].edge_label_index
         edge_label = batch['author', 'topic'].edge_label
-        del batch['author', 'difference_next_topic', 'topic']
-        
-        # Add user node features for message passing:
+        del batch['author', 'next_topic', 'topic']
+        del batch['topic', 'rev_next_topic', 'author']
+
+        # Add node embeddings for message passing
         batch['author'].x = embedding_author(batch['author'].n_id)
         batch['topic'].x = embedding_topic(batch['topic'].n_id)
 
         pred = model(batch.x_dict, batch.edge_index_dict, edge_label_index)
+        target = edge_label
+        loss = F.binary_cross_entropy_with_logits(pred, target)
+
+        total_loss += float(loss) * pred.numel()
+        total_examples += pred.numel()
+
+        # Calculate accuracy
         pred = pred.clamp(min=0, max=1)
-        target = edge_label.float()
-        rmse = F.mse_loss(pred, target).sqrt()
-        loss = weighted_mse_loss(pred, target, weight)
-        total_mse += rmse
-        total_loss += float(loss) * len(pred)
-        total_examples += len(pred)
         total_correct += int((torch.round(pred, decimals=0) == target).sum())
 
-    for i in range(len(target)):
-                if target[i].item() == 0:
-                    if torch.round(pred, decimals=0)[i].item() == 0:
-                        confusion_matrix['tn'] += 1
-                    else:
-                        confusion_matrix['fn'] += 1
+        # Confusion matrix
+        for i in range(len(target)):
+            if target[i].item() == 0:
+                if torch.round(pred, decimals=0)[i].item() == 0:
+                    confusion_matrix['tn'] += 1
                 else:
-                    if torch.round(pred, decimals=0)[i].item() == 1:
-                        confusion_matrix['tp'] += 1
-                    else:
-                        confusion_matrix['fp'] += 1
+                    confusion_matrix['fn'] += 1
+            else:
+                if torch.round(pred, decimals=0)[i].item() == 1:
+                    confusion_matrix['tp'] += 1
+                else:
+                    confusion_matrix['fp'] += 1
 
-    return total_mse / BATCH_SIZE, total_correct / total_examples, total_loss / total_examples
+    return total_correct / total_examples, total_loss / total_examples
 
 
-# Initialize optimizer
-optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-
+# Main Training Loop
 training_loss_list = []
 validation_loss_list = []
-accuracy_list = []
-confusion_matrix = {
-    'tp': 0,
-    'fp': 0,
-    'fn': 0,
-    'tn': 0
-}
+training_accuracy_list = []
+validation_accuracy_list = []
+confusion_matrix = {'tp': 0, 'fp': 0, 'fn': 0, 'tn': 0}
+best_val_loss = np.inf
+patience = 5
+counter = 0
 
-for epoch in range(first_epoch, 51):
-    # Train the model
-    loss = train()
+# Training Loop
+for epoch in range(1, 100):
+    train_acc, train_loss = train()
+    confusion_matrix = {'tp': 0, 'fp': 0, 'fn': 0, 'tn': 0}
+    val_acc, val_loss = test(val_loader)
 
-    confusion_matrix = {
-        'tp': 0,
-        'fp': 0,
-        'fn': 0,
-        'tn': 0
-    }
-        
-    # Test the model
-    val_mse, val_acc, loss_val = test(val_loader)
+    # Save the model if validation loss improves
+    if val_loss < best_val_loss:
+        best_val_loss = val_loss
+        anp_save(model, PATH, epoch, train_loss, val_loss, val_acc)
+        counter = 0  # Reset the counter if validation loss improves
+    else:
+        counter += 1
 
-    # Save the model
-    anp_save(model, PATH, epoch, loss, val_mse.item(), val_acc)
-    
-    training_loss_list.append(loss)
-    validation_loss_list.append(loss_val)
-    accuracy_list.append(val_acc)
-    
+    # Early stopping check
+    if counter >= patience:
+        print(f'Early stopping at epoch {epoch}.')
+        break
+
+    training_loss_list.append(train_loss)
+    validation_loss_list.append(val_loss)
+    training_accuracy_list.append(train_acc)
+    validation_accuracy_list.append(val_acc)
+
     # Print epoch results
-    print(f'Epoch: {epoch:02d}, Loss: {loss:.4f} - {loss_val:.4f} RMSE: {val_mse:.4f}, Accuracy: {val_acc:.4f}')
- 
-generate_graph (training_loss_list, validation_loss_list, accuracy_list, confusion_matrix)
+    print(f'Epoch: {epoch:02d}, Loss: {train_loss:.4f} - {val_loss:.4f}, Accuracy: {val_acc:.4f}, Counter: {counter:02d}')
+
+generate_graph(PATH, training_loss_list, validation_loss_list, training_accuracy_list, validation_accuracy_list,
+               confusion_matrix)
