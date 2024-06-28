@@ -18,21 +18,24 @@ from tqdm import tqdm
 BATCH_SIZE = 4096
 YEAR = 2019
 ROOT = "../anp_data"
-DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 # Get command line arguments
 learning_rate = float(sys.argv[1])
 infosphere_type = int(sys.argv[2])
 infosphere_parameters = sys.argv[3]
 only_new = sys.argv[4].lower() == 'true'
+edge_number = int(sys.argv[5])
+drop_percentage = sys.argv[6]
 
 # Current timestamp for model saving
 current_date = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-PATH = f"../anp_models/{os.path.basename(sys.argv[0][:-3])}_{current_date}/"
+PATH = f"../anp_models/{os.path.basename(sys.argv[0][:-3])}_{infosphere_type}_{infosphere_parameters}_{only_new}_{edge_number}_{current_date}/"
 os.makedirs(PATH)
 with open(PATH + 'info.json', 'w') as json_file:
     json.dump({'lr': learning_rate, 'infosphere_type': infosphere_type, 'infosphere_parameters': infosphere_parameters,
-               'only_new': only_new, 'data': []}, json_file)
+               'only_new': only_new, 'edge_number': edge_number, 'drop_percentage': drop_percentage, 'data': []}, json_file)
+
 
 # Create ANP dataset
 dataset = ANPDataset(root=ROOT)
@@ -48,11 +51,17 @@ if infosphere_type != 0:
         # Load infosphere
         if os.path.exists(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}"):
             infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}")
-            data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(infosphere_edges[CITES])
+            
+             # Drop edges for each type of relationship
+            cites_edges = drop_edges(infosphere_edges[CITES], drop_percentage)
+            writes_edges = drop_edges(infosphere_edges[WRITES], drop_percentage)
+            about_edges = drop_edges(infosphere_edges[ABOUT], drop_percentage)
+    
+            data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(cites_edges)
             data['paper', 'infosphere_cites', 'paper'].edge_label = None
-            data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(infosphere_edges[WRITES])
+            data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(writes_edges)
             data['author', 'infosphere_writes', 'paper'].edge_label = None
-            data['paper', 'infosphere_about', 'topic'].edge_index = coalesce(infosphere_edges[ABOUT])
+            data['paper', 'infosphere_about', 'topic'].edge_index = coalesce(about_edges)
             data['paper', 'infosphere_about', 'topic'].edge_label = None
         else:
             raise Exception(f"{name_infosphere} not found!")
@@ -130,7 +139,7 @@ edge_label_index = train_data['author', 'co_author', 'author'].edge_label_index
 edge_label = train_data['author', 'co_author', 'author'].edge_label
 train_loader = LinkNeighborLoader(
     data=train_data,
-    num_neighbors=[30, 10],
+    num_neighbors=[edge_number, 30],
     # neg_sampling_ratio=2.0,
     edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
     edge_label=edge_label,
@@ -142,7 +151,7 @@ edge_label_index = val_data['author', 'co_author', 'author'].edge_label_index
 edge_label = val_data['author', 'co_author', 'author'].edge_label
 val_loader = LinkNeighborLoader(
     data=val_data,
-    num_neighbors=[30, 10],
+    num_neighbors=[edge_number, 30],
     edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
     edge_label=edge_label,
     batch_size=1024,

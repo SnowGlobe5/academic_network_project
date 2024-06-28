@@ -25,6 +25,7 @@ Functions:
 
 """
 import torch
+import random
 import numpy as np
 import json
 import sys
@@ -498,6 +499,24 @@ def create_infosphere_top_papers_per_topic_edge_index(data, topics_per_author, p
                     dst.append(paper)
     
     edge_index = torch.tensor([src, dst], dtype=torch.long)
+    return edge_index
+
+
+def drop_edges(edge_index, drop_percentage, seed=42):
+    random.seed(seed)
+    num_edges = edge_index.size(1)
+    num_edges_to_drop = int(num_edges * drop_percentage)
+    
+    # Randomly select indices of the edges to drop
+    indices_to_drop = random.sample(range(num_edges), num_edges_to_drop)
+    
+    # Create a mask for the edges to keep
+    mask = torch.ones(num_edges, dtype=torch.bool)
+    mask[indices_to_drop] = False
+    
+    # Filter the edges to keep
+    edge_index = edge_index[:, mask]
+    
     return edge_index
 
 

@@ -10,12 +10,12 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
 
 # Folder containing the experiment folders
-base_folder = "/home/sguidotti/academic_network_project/anp_models"
+base_folder = "/home/sabrina/academic_network_project/anp_models"
 
 date_lower = "2024_04_24"
-date_upper = "2024_05_16"
+date_upper = "2024_07_16"
 lr_lower = 0.00001
-lr_upper = 0.00000005
+lr_upper = 0.00001
 
 infosphere_string = ["Baseline (No infosphere)", "Future infosphere", "Infosphere TOP PAPER", "Infosphere TOP PAPER PER TOPIC"]
 # Convert date strings to integers for comparison
@@ -31,7 +31,6 @@ def read_info_json(folder):
     if os.path.exists(info_file):
         with open(info_file) as f:
             info_data = json.load(f)
-            del info_data['data']
             if info_data['infosphere_type'] == 0:
                 del info_data['infosphere_parameters']
             return info_data
@@ -47,7 +46,7 @@ def read_log_json(folder):
     return None
 
 # Regex for the folder format
-folder_pattern = re.compile(r'anp_link_prediction_co_author_(\d{4}_\d{2}_\d{2})_\d{2}_\d{2}_\d{2}')
+folder_pattern = re.compile(r'anp_link_prediction_co_author_(.*?)_(\d{4}_\d{2}_\d{2})_\d{2}_\d{2}_\d{2}')
 
 # Scan all the experiment folders
 for experiment_folder in os.listdir(base_folder):
@@ -60,7 +59,7 @@ for experiment_folder in os.listdir(base_folder):
     if not match:
         continue
 
-    folder_date = match.group(1)
+    folder_date = match.group(2)
     if not (date_lower_int <= int(folder_date.replace("_", "")) <= date_upper_int):
         continue
 
@@ -69,10 +68,10 @@ for experiment_folder in os.listdir(base_folder):
     if info is None:
         continue
 
-    # Read anp_link_prediction_co_author_log.json
-    log_data = read_log_json(experiment_path)
-    if log_data is None:
-        continue
+    # # Read anp_link_prediction_co_author_log.json
+    # log_data = read_log_json(experiment_path)
+    # if log_data is None:
+    #     continue
 
     # Extract the values of interest
     prediction_type = info.get("only_new", "N/A")
@@ -81,11 +80,11 @@ for experiment_folder in os.listdir(base_folder):
     if not (lr_upper <= float(lr) <= lr_lower):
         continue
 
-    validation_accuracy = log_data["validation_accuracy_list"][-1] if "validation_accuracy_list" in log_data else "N/A"
+    validation_accuracy = info["data"][-1]["accuracy"] if info["data"] else "N/A"
 
     # Calculate highest accuracy and average of last 10 epochs
-    highest_accuracy = max(log_data["validation_accuracy_list"]) if "validation_accuracy_list" in log_data else "N/A"
-    avg_last_10_epochs = sum(log_data["validation_accuracy_list"][-10:]) / 10 if "validation_accuracy_list" in log_data and len(log_data["validation_accuracy_list"]) >= 10 else "N/A"
+    highest_accuracy = max([entry["accuracy"] for entry in info["data"]]) if info["data"] else "N/A"
+    avg_last_10_epochs = sum([entry["accuracy"] for entry in info["data"][-10:]]) / 10 if len(info["data"]) >= 10 else "N/A"
 
     # Create a title for the report
     folder = f"Folder: {experiment_folder}"
@@ -101,14 +100,20 @@ for experiment_folder in os.listdir(base_folder):
 
     # Save the images if they exist
     images = []
-    for image_name in ["anp_link_prediction_co_author_accuracy.pdf", "anp_link_prediction_co_author_CM.pdf", "anp_link_prediction_co_author_loss.pdf"]:
-        image_path = os.path.join(experiment_path, image_name)
+    for base_name in ["accuracy", "CM", "loss"]:
+        image_path = ""
+        list_ex = os.listdir(experiment_path)
+        for file_name in list_ex:
+            if base_name in file_name:
+                # Costruire il percorso completo del file
+                image_path = os.path.join(experiment_path, file_name)
+                break
         if os.path.exists(image_path):
             # Convert the PDF to a JPEG image
             pdf_images = convert_from_path(image_path, dpi=300, fmt='jpeg')
             for idx, pdf_image in enumerate(pdf_images):
                 # Save the temporary image
-                temp_image_path = f"temp_{image_name}_{experiment_folder}.jpeg"
+                temp_image_path = f"temp_{file_name}_{experiment_folder}.jpeg"
                 pdf_image.save(temp_image_path, "JPEG")
                 images.append(temp_image_path)
 
