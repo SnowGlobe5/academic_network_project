@@ -19,7 +19,7 @@ from tqdm import tqdm
 BATCH_SIZE = 4096
 YEAR = 2019
 ROOT = "../anp_data"
-DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 # Get command line arguments
 learning_rate = float(sys.argv[1])
@@ -49,7 +49,7 @@ if use_infosphere:
 
         # Load infosphere
         if os.path.exists(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}"):
-            infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}")
+            infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}", map_location=DEVICE)
             data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(infosphere_edges[CITES])
             data['paper', 'infosphere_cites', 'paper'].edge_label = None
             data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(infosphere_edges[WRITES])
@@ -72,7 +72,7 @@ coauthor_file = f"{ROOT}/processed/difference_co_author_edge{coauthor_year}.pt" 
 # Use existing co-author edge if available, else generate
 if os.path.exists(coauthor_file):
     print("Co-author edge found!")
-    data['author', 'co_author', 'author'].edge_index = torch.load(coauthor_file)
+    data['author', 'co_author', 'author'].edge_index = torch.load(coauthor_file, map_location=DEVICE)
     data['author', 'co_author', 'author'].edge_label = None
 else:
     print("Generating co-author edge...")

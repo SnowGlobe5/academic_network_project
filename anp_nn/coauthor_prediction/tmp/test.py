@@ -7,7 +7,7 @@ from academic_network_project.anp_core.anp_dataset import ANPDataset
 BATCH_SIZE = 4096
 YEAR = 2019
 ROOT = "../anp_data"
-DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 # Create ANP dataset
 dataset = ANPDataset(root=ROOT)

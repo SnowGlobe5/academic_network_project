@@ -20,7 +20,7 @@ from tqdm import tqdm
 BATCH_SIZE = 4096
 YEAR = 2019
 ROOT = "../anp_data"
-DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 # Get command line arguments
 learning_rate = float(sys.argv[1])
@@ -29,7 +29,7 @@ infosphere_parameters = sys.argv[3]
 only_new = sys.argv[4].lower() == 'true'
 edge_number = int(sys.argv[5])
 aggregation_type = sys.argv[6]
-drop_percentage = sys.argv[7]
+drop_percentage = float(sys.argv[7])
 
 # Current timestamp for model saving
 current_date = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
@@ -52,8 +52,9 @@ if infosphere_type != 0:
 
         # Load infosphere
         if os.path.exists(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}"):
-            infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}")
-            
+            print(DEVICE)
+            infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}", map_location=DEVICE)
+            print("Infosphere loaded!")
             # Drop edges for each type of relationship
             cites_edges = drop_edges(infosphere_edges[CITES], drop_percentage)
             writes_edges = drop_edges(infosphere_edges[WRITES], drop_percentage)
@@ -78,7 +79,7 @@ if infosphere_type != 0:
         arg_list = ast.literal_eval(infosphere_parameterss)
         if os.path.exists(f"{ROOT}/processed/edge_infosphere_3_{arg_list[0]}_{arg_list[1]}.pt"):
             print("Infosphere 3 edge found!")
-            data['author', 'infosphere', 'paper'].edge_index = torch.load(f"{ROOT}/processed/edge_infosphere_3_{arg_list[0]}_{arg_list[1]}.pt")
+            data['author', 'infosphere', 'paper'].edge_index = torch.load(f"{ROOT}/processed/edge_infosphere_3_{arg_list[0]}_{arg_list[1]}.pt", map_location=DEVICE)
             data['author', 'infosphere', 'paper'].edge_label = None
         else:
             print("Generating infosphere 3 edge...")
@@ -101,7 +102,7 @@ coauthor_file = f"{ROOT}/processed/difference_co_author_edge{coauthor_year}.pt" 
 # Use existing co-author edge if available, else generate
 if os.path.exists(coauthor_file):
     print("Co-author edge found!")
-    data['author', 'co_author', 'author'].edge_index = torch.load(coauthor_file)
+    data['author', 'co_author', 'author'].edge_index = torch.load(coauthor_file, map_location=DEVICE)
     data['author', 'co_author', 'author'].edge_label = None
 else:
     print("Generating co-author edge...")
@@ -173,14 +174,10 @@ class GNNEncoder(torch.nn.Module):
         super().__init__()
         self.conv1 = SAGEConv((-1, -1), hidden_channels)
         self.conv2 = SAGEConv((-1, -1), out_channels)
-        self.conv3 = SAGEConv((-1, -1), out_channels)
-        self.conv4 = SAGEConv((-1, -1), out_channels)
 
     def forward(self, x, edge_index):
         x = self.conv1(x, edge_index).relu()
-        x = self.conv2(x, edge_index).relu()
-        x = self.conv3(x, edge_index).relu()
-        x = self.conv4(x, edge_index)
+        x = self.conv2(x, edge_index)
         return x
 
 
@@ -211,6 +208,8 @@ class Model(torch.nn.Module):
 
 
 # Initialize model, optimizer, scheduler, and embeddings
+print("Initializing model...")
+print(DEVICE)
 model = Model(hidden_channels=32).to(DEVICE)
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 lr_scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
@@ -297,7 +296,7 @@ training_accuracy_list = []
 validation_accuracy_list = []
 confusion_matrix = {'tp': 0, 'fp': 0, 'fn': 0, 'tn': 0}
 best_val_loss = np.inf
-patience = 10
+patience = 5
 counter = 0
 
 # Training Loop

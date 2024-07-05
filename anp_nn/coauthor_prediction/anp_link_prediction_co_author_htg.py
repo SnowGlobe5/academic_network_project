@@ -18,7 +18,7 @@ from tqdm import tqdm
 BATCH_SIZE = 4096
 YEAR = 2019
 ROOT = "../anp_data"
-DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 # Get command line arguments
 learning_rate = float(sys.argv[1])
@@ -26,7 +26,7 @@ infosphere_type = int(sys.argv[2])
 infosphere_parameters = sys.argv[3]
 only_new = sys.argv[4].lower() == 'true'
 edge_number = int(sys.argv[5])
-drop_percentage = sys.argv[6]
+drop_percentage = float(sys.argv[6])
 
 # Current timestamp for model saving
 current_date = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
@@ -50,7 +50,7 @@ if infosphere_type != 0:
 
         # Load infosphere
         if os.path.exists(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}"):
-            infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}")
+            infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}", map_location=DEVICE)
             
              # Drop edges for each type of relationship
             cites_edges = drop_edges(infosphere_edges[CITES], drop_percentage)
@@ -76,7 +76,7 @@ if infosphere_type != 0:
         arg_list = ast.literal_eval(infosphere_parameterss)
         if os.path.exists(f"{ROOT}/processed/edge_infosphere_3_{arg_list[0]}_{arg_list[1]}.pt"):
             print("Infosphere 3 edge found!")
-            data['author', 'infosphere', 'paper'].edge_index = torch.load(f"{ROOT}/processed/edge_infosphere_3_{arg_list[0]}_{arg_list[1]}.pt")
+            data['author', 'infosphere', 'paper'].edge_index = torch.load(f"{ROOT}/processed/edge_infosphere_3_{arg_list[0]}_{arg_list[1]}.pt", map_location=DEVICE)
             data['author', 'infosphere', 'paper'].edge_label = None
         else:
             print("Generating infosphere 3 edge...")
@@ -99,7 +99,7 @@ coauthor_file = f"{ROOT}/processed/difference_co_author_edge{coauthor_year}.pt" 
 # Use existing co-author edge if available, else generate
 if os.path.exists(coauthor_file):
     print("Co-author edge found!")
-    data['author', 'co_author', 'author'].edge_index = torch.load(coauthor_file)
+    data['author', 'co_author', 'author'].edge_index = torch.load(coauthor_file, map_location=DEVICE)
     data['author', 'co_author', 'author'].edge_label = None
 else:
     print("Generating co-author edge...")

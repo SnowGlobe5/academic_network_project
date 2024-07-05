@@ -15,7 +15,7 @@ current_date = datetime.now().strftime("%Y-%m-%d")
 BATCH_SIZE = 4096
 YEAR = 2019
 
-DEVICE=torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+DEVICE=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 ROOT = "../anp_data"
 PATH = f"../anp_models/{sys.argv[0]}_{current_date}/"

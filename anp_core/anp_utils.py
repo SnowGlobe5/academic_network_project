@@ -44,7 +44,7 @@ WRITES = 1
 ABOUT = 2
 
 MAX_ITERATION = 1
-DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
 def expand_1_hop_edge_index(edge_index, node, flow):
@@ -294,7 +294,7 @@ def generate_difference_co_author_edge_year_single(data, year, root):
     # Use already existing co-author edge (if exist)
     if os.path.exists(f"{root}/processed/co_author_edge{year}.pt"):
         print("Current co-author edge found!")
-        current_edge_index = torch.load(f"{root}/processed/co_author_edge{year}.pt")
+        current_edge_index = torch.load(f"{root}/processed/co_author_edge{year}.pt", map_location=DEVICE)
     else:
         print("Generating current co-author edge...")
         current_edge_index = generate_co_author_edge_year(data, year)
@@ -302,7 +302,7 @@ def generate_difference_co_author_edge_year_single(data, year, root):
 
     if os.path.exists(f"{root}/processed/co_author_edge{year + 1}.pt"):
         print("Next co-author edge found!")
-        next_edge_index = torch.load(f"{root}/processed/co_author_edge{year + 1}.pt")
+        next_edge_index = torch.load(f"{root}/processed/co_author_edge{year + 1}.pt", map_location=DEVICE)
     else:
         print("Generating next co-author edge...")
         next_edge_index = generate_co_author_edge_year(data, year + 1)
@@ -339,7 +339,7 @@ def generate_difference_co_author_edge_year(data, year, root):
     # Use already existing co-author edge (if exist)
     if os.path.exists(f"{root}/processed/co_author_edge{year}_history.pt"):
         print("Current history co-author edge found!")
-        current_edge_index = torch.load(f"{root}/processed/co_author_edge{year}_history.pt")
+        current_edge_index = torch.load(f"{root}/processed/co_author_edge{year}_history.pt", map_location=DEVICE)
     else:
         print("Generating current history co-author edge...")
         current_edge_index = generate_co_author_edge_year_history(data, year)
@@ -347,7 +347,7 @@ def generate_difference_co_author_edge_year(data, year, root):
 
     if os.path.exists(f"{root}/processed/co_author_edge{year + 1}.pt"):
         print("Next co-author edge found!")
-        next_edge_index = torch.load(f"{root}/processed/co_author_edge{year + 1}.pt")
+        next_edge_index = torch.load(f"{root}/processed/co_author_edge{year + 1}.pt", map_location=DEVICE)
     else:
         print("Generating next co-author edge...")
         next_edge_index = generate_co_author_edge_year(data, year + 1)
@@ -432,7 +432,7 @@ def generate_difference_next_topic_edge_year(data, year, root):
     # Use already existing next-topic edge (if exist)
     if os.path.exists(f"{root}/processed/next_topic_edge{year}.pt"):
         print("Current next-topic edge found!")
-        current_edge_index = torch.load(f"{root}/processed/next_topic_edge{year}.pt")
+        current_edge_index = torch.load(f"{root}/processed/next_topic_edge{year}.pt", map_location=DEVICE)
     else:
         print("Generating current next-topic edge...")
         current_edge_index = generate_next_topic_edge_year(data, year)
@@ -440,7 +440,7 @@ def generate_difference_next_topic_edge_year(data, year, root):
 
     if os.path.exists(f"{root}/processed/next_topic_edge{year + 1}.pt"):
         print("Next next-topic edge found!")
-        next_edge_index = torch.load(f"{root}/processed/next_topic_edge{year + 1}.pt")
+        next_edge_index = torch.load(f"{root}/processed/next_topic_edge{year + 1}.pt", map_location=DEVICE)
     else:
         print("Generating next next-topic edge...")
         next_edge_index = generate_next_topic_edge_year(data, year + 1)
@@ -558,7 +558,7 @@ def anp_load(path):
   """
     with open(path + 'info.json', 'r') as json_file:
         data = json.load(json_file)
-    return torch.load(path + 'model.pt'), data[-1]["data"]["epoch"]
+    return torch.load(path + 'model.pt', map_location=DEVICE), data[-1]["data"]["epoch"]
 
 
 def generate_graph(path, training_loss_list, validation_loss_list, training_accuracy_list, validation_accuracy_list,
