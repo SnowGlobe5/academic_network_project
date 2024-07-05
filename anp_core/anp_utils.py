@@ -25,6 +25,7 @@ Functions:
 
 """
 import torch
+import random
 import numpy as np
 import json
 import sys
@@ -43,7 +44,7 @@ WRITES = 1
 ABOUT = 2
 
 MAX_ITERATION = 1
-DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
 def expand_1_hop_edge_index(edge_index, node, flow):
@@ -293,7 +294,7 @@ def generate_difference_co_author_edge_year_single(data, year, root):
     # Use already existing co-author edge (if exist)
     if os.path.exists(f"{root}/processed/co_author_edge{year}.pt"):
         print("Current co-author edge found!")
-        current_edge_index = torch.load(f"{root}/processed/co_author_edge{year}.pt")
+        current_edge_index = torch.load(f"{root}/processed/co_author_edge{year}.pt", map_location=DEVICE)
     else:
         print("Generating current co-author edge...")
         current_edge_index = generate_co_author_edge_year(data, year)
@@ -301,7 +302,7 @@ def generate_difference_co_author_edge_year_single(data, year, root):
 
     if os.path.exists(f"{root}/processed/co_author_edge{year + 1}.pt"):
         print("Next co-author edge found!")
-        next_edge_index = torch.load(f"{root}/processed/co_author_edge{year + 1}.pt")
+        next_edge_index = torch.load(f"{root}/processed/co_author_edge{year + 1}.pt", map_location=DEVICE)
     else:
         print("Generating next co-author edge...")
         next_edge_index = generate_co_author_edge_year(data, year + 1)
@@ -338,7 +339,7 @@ def generate_difference_co_author_edge_year(data, year, root):
     # Use already existing co-author edge (if exist)
     if os.path.exists(f"{root}/processed/co_author_edge{year}_history.pt"):
         print("Current history co-author edge found!")
-        current_edge_index = torch.load(f"{root}/processed/co_author_edge{year}_history.pt")
+        current_edge_index = torch.load(f"{root}/processed/co_author_edge{year}_history.pt", map_location=DEVICE)
     else:
         print("Generating current history co-author edge...")
         current_edge_index = generate_co_author_edge_year_history(data, year)
@@ -346,7 +347,7 @@ def generate_difference_co_author_edge_year(data, year, root):
 
     if os.path.exists(f"{root}/processed/co_author_edge{year + 1}.pt"):
         print("Next co-author edge found!")
-        next_edge_index = torch.load(f"{root}/processed/co_author_edge{year + 1}.pt")
+        next_edge_index = torch.load(f"{root}/processed/co_author_edge{year + 1}.pt", map_location=DEVICE)
     else:
         print("Generating next co-author edge...")
         next_edge_index = generate_co_author_edge_year(data, year + 1)
@@ -431,7 +432,7 @@ def generate_difference_next_topic_edge_year(data, year, root):
     # Use already existing next-topic edge (if exist)
     if os.path.exists(f"{root}/processed/next_topic_edge{year}.pt"):
         print("Current next-topic edge found!")
-        current_edge_index = torch.load(f"{root}/processed/next_topic_edge{year}.pt")
+        current_edge_index = torch.load(f"{root}/processed/next_topic_edge{year}.pt", map_location=DEVICE)
     else:
         print("Generating current next-topic edge...")
         current_edge_index = generate_next_topic_edge_year(data, year)
@@ -439,7 +440,7 @@ def generate_difference_next_topic_edge_year(data, year, root):
 
     if os.path.exists(f"{root}/processed/next_topic_edge{year + 1}.pt"):
         print("Next next-topic edge found!")
-        next_edge_index = torch.load(f"{root}/processed/next_topic_edge{year + 1}.pt")
+        next_edge_index = torch.load(f"{root}/processed/next_topic_edge{year + 1}.pt", map_location=DEVICE)
     else:
         print("Generating next next-topic edge...")
         next_edge_index = generate_next_topic_edge_year(data, year + 1)
@@ -459,12 +460,11 @@ def generate_difference_next_topic_edge_year(data, year, root):
     return difference_edge_index
 
 
-def create_infosphere_top_papers_edge_index(data, n):
+def create_infosphere_top_papers_edge_index(data, n, year):
     df = pd.read_csv("../anp_data/raw/sorted_papers.csv")
-    papers = df['id'][:n].values
+    papers = df[df['year'] <= year]['id'][:n].values
     authors = data['author'].num_nodes
     
-    # Costruisci l'edge index
     src = []
     dst = []
     for author in range(authors):
@@ -473,6 +473,50 @@ def create_infosphere_top_papers_edge_index(data, n):
             dst.append(paper)
     edge_index = torch.tensor([src, dst])
     print(edge_index)
+    return edge_index
+
+
+def create_infosphere_top_papers_per_topic_edge_index(data, topics_per_author, papers_per_topic, year):
+    df_papers = pd.read_csv("../anp_data/raw/sorted_papers_about.csv")
+    df_papers_filtered = df_papers[df_papers['year'] <= year]
+    df_topic = pd.read_csv(f"../anp_data/raw/sorted_authors_topics_{2019}.csv")
+    
+    papers_dict = df_papers_filtered.groupby('topic_id')['id'].apply(list).to_dict()
+    topics_dict = df_topic.groupby('author_id')['topic_id'].apply(list).to_dict()
+    
+    authors = data['author'].num_nodes
+    
+    src = []
+    dst = []
+    for author in range(authors):
+        if author in topics_dict:
+            topics = topics_dict[author][:topics_per_author]
+            
+            for topic in topics:
+                papers = papers_dict[topic][:papers_per_topic]
+                for paper in papers:
+                    src.append(author)
+                    dst.append(paper)
+    
+    edge_index = torch.tensor([src, dst], dtype=torch.long)
+    return edge_index
+
+
+def drop_edges(edge_index, drop_percentage, seed=42):
+    random.seed(seed)
+    num_edges = edge_index.size(1)
+    num_edges_to_drop = int(num_edges * drop_percentage)
+    
+    # Randomly select indices of the edges to drop
+    indices_to_drop = random.sample(range(num_edges), num_edges_to_drop)
+    
+    # Create a mask for the edges to keep
+    mask = torch.ones(num_edges, dtype=torch.bool)
+    mask[indices_to_drop] = False
+    
+    # Filter the edges to keep
+    edge_index = edge_index[:, mask]
+    
     return edge_index
 
 
@@ -514,7 +558,7 @@ def anp_load(path):
   """
     with open(path + 'info.json', 'r') as json_file:
         data = json.load(json_file)
-    return torch.load(path + 'model.pt'), data[-1]["data"]["epoch"]
+    return torch.load(path + 'model.pt', map_location=DEVICE), data[-1]["data"]["epoch"]
 
 
 def generate_graph(path, training_loss_list, validation_loss_list, training_accuracy_list, validation_accuracy_list,

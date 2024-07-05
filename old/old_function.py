@@ -10,7 +10,7 @@ def get_infosphere_old(data, data_next_year, author_id, paths, papers_next_year,
     for paper in author_papers_next_year:
         # cited papers
         sub_edge_index = expand_1_hop_edge_index(cites_edge_index, paper, flow='target_to_source')
-        mask = torch.isin(sub_edge_index[1], torch.tensor(papers_next_year).to('cuda:0'), invert=True)
+        mask = torch.isin(sub_edge_index[1], torch.tensor(papers_next_year).to('cuda:1'), invert=True)
         for cited_paper in sub_edge_index[:, mask][1].tolist():
             if not infosphere[PAPER].get(cited_paper):
                 while True:
@@ -133,8 +133,8 @@ def create_history_graph_old(data, author_id):
     sub_edge_index = expand_1_hop_edge_index(writes_edge_index, author_id, flow='target_to_source')
     author_papers = sub_edge_index[1]
     subset_dict = {('author', 'writes', 'paper'): sub_edge_index,
-                   ('paper', 'cites', 'paper'): torch.tensor([]).to(torch.int64).to('cuda:0'),
-                   ('paper', 'about', 'topic'): torch.tensor([]).to(torch.int64).to('cuda:0')}
+                   ('paper', 'cites', 'paper'): torch.tensor([]).to(torch.int64).to('cuda:1'),
+                   ('paper', 'about', 'topic'): torch.tensor([]).to(torch.int64).to('cuda:1')}
     paths[AUTHOR][author_id] = []
 
     for paper in author_papers.tolist():

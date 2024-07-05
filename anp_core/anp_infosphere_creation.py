@@ -319,7 +319,7 @@ def generate_infosphere_part(max_year, part, start, finish):
     
     if d_cuda:
         if part % 2 == 0: DEVICE = 'cuda:0'
-        else: DEVICE = 'cuda:1'
+        else: DEVICE = 'cuda:0'
 
     dataset = ANPDataset(root=root)
     data = dataset[0]

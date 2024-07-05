@@ -19,12 +19,12 @@ from tqdm import tqdm
 BATCH_SIZE = 4096
 YEAR = 2019
 ROOT = "../anp_data"
-DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 # Get command line arguments
 learning_rate = float(sys.argv[1])
 use_infosphere = sys.argv[2].lower() == 'true'
-infosphere_number = int(sys.argv[3])
+infosphere_parameters = int(sys.argv[3])
 infosphere_type = int(sys.argv[4])
 only_new = sys.argv[5].lower() == 'true'
 
@@ -33,7 +33,7 @@ current_date = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
 PATH = f"../anp_models/{os.path.basename(sys.argv[0][:-3])}_{current_date}/"
 os.makedirs(PATH)
 with open(PATH + 'info.json', 'w') as json_file:
-    json.dump({'lr': learning_rate, 'use_infosphere': use_infosphere, 'infosphere_type': infosphere_type, 'infosphere_expansion': infosphere_number,
+    json.dump({'lr': learning_rate, 'use_infosphere': use_infosphere, 'infosphere_type': infosphere_type, 'infosphere_expansion': infosphere_parameters,
                'only_new': only_new, 'data': []}, json_file)
 
 # Create ANP dataset
@@ -45,11 +45,11 @@ if use_infosphere:
     if infosphere_type == 0:
         fold = [0, 1, 2, 3, 4]
         fold_string = '_'.join(map(str, fold))
-        name_infosphere = f"{infosphere_number}_infosphere_{fold_string}_{YEAR}_noisy.pt"
+        name_infosphere = f"{infosphere_parameters}_infosphere_{fold_string}_{YEAR}_noisy.pt"
 
         # Load infosphere
         if os.path.exists(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}"):
-            infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}")
+            infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}", map_location=DEVICE)
             data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(infosphere_edges[CITES])
             data['paper', 'infosphere_cites', 'paper'].edge_label = None
             data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(infosphere_edges[WRITES])
@@ -59,7 +59,7 @@ if use_infosphere:
         else:
             raise Exception(f"{name_infosphere} not found!")
     else:
-        infosphere_edge = create_infosphere_top_papers_edge_index(data, infosphere_number)
+        infosphere_edge = create_infosphere_top_papers_edge_index(data, infosphere_parameters)
         data['author', 'infosphere', 'paper'].edge_index = coalesce(infosphere_edge)
         data['author', 'infosphere', 'paper'].edge_label = None
 
@@ -72,7 +72,7 @@ coauthor_file = f"{ROOT}/processed/difference_co_author_edge{coauthor_year}.pt" 
 # Use existing co-author edge if available, else generate
 if os.path.exists(coauthor_file):
     print("Co-author edge found!")
-    data['author', 'co_author', 'author'].edge_index = torch.load(coauthor_file)
+    data['author', 'co_author', 'author'].edge_index = torch.load(coauthor_file, map_location=DEVICE)
     data['author', 'co_author', 'author'].edge_label = None
 else:
     print("Generating co-author edge...")

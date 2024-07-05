@@ -18,7 +18,7 @@ YEAR = 2019
 
 ROOT = "../anp_data"
 PATH = f"../anp_models/{sys.argv[0]}_{current_date}/"
-DEVICE=torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+DEVICE=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 if sys.argv[1] == 'True':
     use_link_split = True
@@ -40,7 +40,7 @@ data = dataset[0]
 # Use already existing co-author edge (if exist)
 if os.path.exists(f"{ROOT}/processed/co_author_edge{YEAR}.pt"):
     print("Co-author edge found!")
-    data['author', 'co_author', 'author'].edge_index = torch.load(f"{ROOT}/processed/co_author_edge{YEAR}.pt")
+    data['author', 'co_author', 'author'].edge_index = torch.load(f"{ROOT}/processed/co_author_edge{YEAR}.pt", map_location=DEVICE)
     data['author', 'co_author', 'author'].edge_label = None
 else:
     print("Generating co-author edge...")
