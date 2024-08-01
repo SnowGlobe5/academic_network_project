@@ -9,7 +9,7 @@ import torch
 import torch.nn.functional as F
 import torch_geometric.transforms as T
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-frfrom torch.nn import Linear
+from torch.nn import Linear
 from torch_geometric.loader import LinkNeighborLoader
 from torch_geometric.nn import HGTConv, Linear
 from torch_geometric.utils import coalesce
