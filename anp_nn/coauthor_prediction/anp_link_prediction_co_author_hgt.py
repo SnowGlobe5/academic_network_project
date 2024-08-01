@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import ast
 from datetime import datetime
 
@@ -7,8 +8,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch_geometric.transforms as T
-from academic_network_project.anp_core.anp_dataset import ANPDataset
-from academic_network_project.anp_core.anp_utils import *
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+frfrom torch.nn import Linear
 from torch_geometric.loader import LinkNeighborLoader
 from torch_geometric.nn import HGTConv, Linear
 from torch_geometric.utils import coalesce
@@ -18,7 +19,9 @@ from tqdm import tqdm
 BATCH_SIZE = 4096
 YEAR = 2019
 ROOT = "../anp_data"
-DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device(f'cuda:{sys.argv[7]}' if torch.cuda.is_available() else 'cpu')
+from academic_network_project.anp_core.anp_dataset import ANPDataset
+from academic_network_project.anp_core.anp_utils import *
 
 # Get command line arguments
 learning_rate = float(sys.argv[1])
@@ -30,7 +33,7 @@ drop_percentage = float(sys.argv[6])
 
 # Current timestamp for model saving
 current_date = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-PATH = f"../anp_models/{os.path.basename(sys.argv[0][:-3])}_{infosphere_type}_{infosphere_parameters}_{only_new}_{edge_number}_{current_date}/"
+PATH = f"../anp_models/{os.path.basename(sys.argv[0][:-3])}_{infosphere_type}_{infosphere_parameters}_{only_new}_{edge_number}_{drop_percentage}_{current_date}/"
 os.makedirs(PATH)
 with open(PATH + 'info.json', 'w') as json_file:
     json.dump({'lr': learning_rate, 'infosphere_type': infosphere_type, 'infosphere_parameters': infosphere_parameters,
@@ -220,6 +223,7 @@ class Model(torch.nn.Module):
 # Initialize model, optimizer, and embeddings
 model = Model(hidden_channels=32).to(DEVICE)
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+lr_scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
 embedding_author = torch.nn.Embedding(data["author"].num_nodes, 32).to(DEVICE)
 embedding_topic = torch.nn.Embedding(data["topic"].num_nodes, 32).to(DEVICE)
 
@@ -303,11 +307,11 @@ training_accuracy_list = []
 validation_accuracy_list = []
 confusion_matrix = {'tp': 0, 'fp': 0, 'fn': 0, 'tn': 0}
 best_val_loss = np.inf
-patience = 10
+patience = 5
 counter = 0
 
 # Training Loop
-for epoch in range(1, 500):
+for epoch in range(1, 100):
     train_acc, train_loss = train()
     confusion_matrix = {'tp': 0, 'fp': 0, 'fn': 0, 'tn': 0}
     val_acc, val_loss = test(val_loader)
@@ -319,9 +323,11 @@ for epoch in range(1, 500):
         counter = 0  # Reset the counter if validation loss improves
     else:
         counter += 1
+        if counter >= 5: 
+            lr_scheduler.step(val_loss)
 
     # Early stopping check
-    if counter >= patience:
+    if counter >= patience and epoch >= 20:
         print(f'Early stopping at epoch {epoch}.')
         break
 
