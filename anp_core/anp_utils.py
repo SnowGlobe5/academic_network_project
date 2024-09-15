@@ -26,9 +26,9 @@ Functions:
 """
 import torch
 import random
+import sys
 import numpy as np
 import json
-import sys
 from datetime import datetime
 from matplotlib import pyplot as plt
 import seaborn as sn
@@ -44,7 +44,6 @@ WRITES = 1
 ABOUT = 2
 
 MAX_ITERATION = 1
-DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
 def expand_1_hop_edge_index(edge_index, node, flow):

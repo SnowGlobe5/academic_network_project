@@ -11,7 +11,7 @@ import torch_geometric.transforms as T
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.nn import Linear
 from torch_geometric.loader import LinkNeighborLoader
-from torch_geometric.nn import SAGEConv, to_hetero
+from torch_geometric.nn import HGTConv, Linear
 from torch_geometric.utils import coalesce
 from tqdm import tqdm
 
@@ -19,8 +19,7 @@ from tqdm import tqdm
 BATCH_SIZE = 4096
 YEAR = 2019
 ROOT = "../anp_data"
-DEVICE = torch.device(f'cuda:{sys.argv[8]}' if torch.cuda.is_available() else 'cpu')
-
+DEVICE = torch.device(f'cuda:{sys.argv[7]}' if torch.cuda.is_available() else 'cpu')
 from academic_network_project.anp_core.anp_dataset import ANPDataset
 from academic_network_project.anp_core.anp_utils import *
 
@@ -30,46 +29,48 @@ infosphere_type = int(sys.argv[2])
 infosphere_parameters = sys.argv[3]
 only_new = sys.argv[4].lower() == 'true'
 edge_number = int(sys.argv[5])
-aggregation_type = sys.argv[6]
-drop_percentage = float(sys.argv[7])
+drop_percentage = float(sys.argv[6])
 
 # Current timestamp for model saving
 current_date = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-PATH = f"../anp_models/{os.path.basename(sys.argv[0][:-3])}_{infosphere_type}_{infosphere_parameters}_{only_new}_{edge_number}_{aggregation_type}_{drop_percentage}_{current_date}/"
+PATH = f"../anp_models/{os.path.basename(sys.argv[0][:-3])}_{infosphere_type}_{infosphere_parameters}_{only_new}_{edge_number}_{drop_percentage}_{current_date}/"
 os.makedirs(PATH)
 with open(PATH + 'info.json', 'w') as json_file:
     json.dump({'lr': learning_rate, 'infosphere_type': infosphere_type, 'infosphere_parameters': infosphere_parameters,
-               'only_new': only_new, 'edge_number': edge_number, 'aggregation_type': aggregation_type, 'drop_percentage': drop_percentage, 'data': []}, json_file)
+               'only_new': only_new, 'edge_number': edge_number, 'drop_percentage': drop_percentage, 'data': []}, json_file)
+
 
 # Create ANP dataset
 dataset = ANPDataset(root=ROOT)
 data = dataset[0]
 
+
+fold = [0, 1, 2, 3, 4]
+fold_string = '_'.join(map(str, fold))
+name_infosphere = f"5_infosphere_{fold_string}_{YEAR}_noisy.pt"
+
+# Load infosphere
+if os.path.exists(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}"):
+    infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}", map_location=DEVICE)
+    
+        # Drop edges for each type of relationship
+    cites_edges = drop_edges(infosphere_edges[CITES], drop_percentage)
+    writes_edges = drop_edges(infosphere_edges[WRITES], drop_percentage)
+    about_edges = drop_edges(infosphere_edges[ABOUT], drop_percentage)
+
+    data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(cites_edges)
+    data['paper', 'infosphere_cites', 'paper'].edge_label = None
+    data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(writes_edges)
+    data['author', 'infosphere_writes', 'paper'].edge_label = None
+    data['paper', 'infosphere_about', 'topic'].edge_index = coalesce(about_edges)
+    data['paper', 'infosphere_about', 'topic'].edge_label = None
+else:
+    raise Exception(f"{name_infosphere} not found!")
+        
 # Add infosphere data if requested
 if infosphere_type != 0:
     if infosphere_type == 1:
-        fold = [0, 1, 2, 3, 4]
-        fold_string = '_'.join(map(str, fold))
-        name_infosphere = f"{infosphere_parameters}_infosphere_{fold_string}_{YEAR}_noisy.pt"
-
-        # Load infosphere
-        if os.path.exists(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}"):
-            print(DEVICE)
-            infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}", map_location=DEVICE)
-            print("Infosphere loaded!")
-            # Drop edges for each type of relationship
-            cites_edges = drop_edges(infosphere_edges[CITES], drop_percentage)
-            writes_edges = drop_edges(infosphere_edges[WRITES], drop_percentage)
-            about_edges = drop_edges(infosphere_edges[ABOUT], drop_percentage)
-    
-            data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(cites_edges)
-            data['paper', 'infosphere_cites', 'paper'].edge_label = None
-            data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(writes_edges)
-            data['author', 'infosphere_writes', 'paper'].edge_label = None
-            data['paper', 'infosphere_about', 'topic'].edge_index = coalesce(about_edges)
-            data['paper', 'infosphere_about', 'topic'].edge_label = None
-        else:
-            raise Exception(f"{name_infosphere} not found!")
+       raise Exception(f"1 already added!")
         
     elif infosphere_type == 2:
         infosphere_edge = create_infosphere_top_papers_edge_index(data, int(infosphere_parameters), YEAR)
@@ -116,9 +117,6 @@ else:
 data['paper'].x = data['paper'].x.to(torch.float)
 data = T.ToUndirected()(data)
 data = data.to('cpu')
-min_vals = data['paper'].x.min(dim=0)[0]
-max_vals = data['paper'].x.max(dim=0)[0]
-
 
 # Training Data
 sub_graph_train = anp_simple_filter_data(data, root=ROOT, folds=[0, 1, 2, 3], max_year=YEAR)
@@ -172,26 +170,42 @@ del data['author', 'co_author', 'author']
 
 # Define model components
 class GNNEncoder(torch.nn.Module):
-    def __init__(self, hidden_channels, out_channels):
+    def __init__(self, hidden_channels, out_channels, num_heads, num_layers, metadata):
         super().__init__()
-        self.conv1 = SAGEConv((-1, -1), hidden_channels)
-        self.conv2 = SAGEConv((-1, -1), out_channels)
 
-    def forward(self, x, edge_index):
-        x = self.conv1(x, edge_index).relu()
-        x = self.conv2(x, edge_index)
-        return x
+        self.hidden_channels = hidden_channels
+        self.lin_dict = torch.nn.ModuleDict()
+        for node_type in data.node_types:
+            self.lin_dict[node_type] = Linear(-1, hidden_channels)
 
+        self.convs = torch.nn.ModuleList()
+        for _ in range(num_layers):
+            conv = HGTConv(hidden_channels, hidden_channels, metadata,
+                            num_heads)
+            self.convs.append(conv)
+
+        # self.lin = Linear(hidden_channels, out_channels)
+
+    def forward(self, x_dict, edge_index_dict):
+        x_dict = {
+            node_type: self.lin_dict[node_type](x).relu_()
+            for node_type, x in x_dict.items()
+        }
+
+        for conv in self.convs:
+            x_dict = conv(x_dict, edge_index_dict)
+
+        return x_dict
 
 class EdgeDecoder(torch.nn.Module):
     def __init__(self, hidden_channels):
         super().__init__()
         self.lin1 = Linear(2 * hidden_channels, hidden_channels)
         self.lin2 = Linear(hidden_channels, 1)
-
     def forward(self, z_dict, edge_label_index):
         row, col = edge_label_index
         z = torch.cat([z_dict['author'][row], z_dict['author'][col]], dim=-1)
+
         z = self.lin1(z).relu()
         z = self.lin2(z)
         return z.view(-1)
@@ -200,8 +214,8 @@ class EdgeDecoder(torch.nn.Module):
 class Model(torch.nn.Module):
     def __init__(self, hidden_channels):
         super().__init__()
-        self.encoder = GNNEncoder(hidden_channels, hidden_channels)
-        self.encoder = to_hetero(self.encoder, data.metadata(), aggr=aggregation_type)
+        self.encoder = GNNEncoder(hidden_channels, hidden_channels, 2, 1, data.metadata())
+        # self.encoder = to_hetero(self.encoder, data.metadata(), aggr='sum')
         self.decoder = EdgeDecoder(hidden_channels)
 
     def forward(self, x_dict, edge_index_dict, edge_label_index):
@@ -209,9 +223,7 @@ class Model(torch.nn.Module):
         return self.decoder(z_dict, edge_label_index)
 
 
-# Initialize model, optimizer, scheduler, and embeddings
-print("Initializing model...")
-print(DEVICE)
+# Initialize model, optimizer, and embeddings
 model = Model(hidden_channels=32).to(DEVICE)
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 lr_scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
@@ -314,7 +326,7 @@ for epoch in range(1, 100):
         counter = 0  # Reset the counter if validation loss improves
     else:
         counter += 1
-        if counter >= 5:
+        if counter >= 5: 
             lr_scheduler.step(val_loss)
 
     # Early stopping check
