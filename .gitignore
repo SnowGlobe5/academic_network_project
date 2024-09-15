@@ -172,3 +172,5 @@ out/*
 graph_gen.py
 log*
 *.pdf
+*.zip
+*.xlsx

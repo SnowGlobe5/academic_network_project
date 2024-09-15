@@ -23,7 +23,7 @@ from torch_geometric.data import HeteroData
 from torch_geometric.data import InMemoryDataset
 
 from academic_network_project.anp_core.parse_aminer_dataset import extract_dataset
-DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
 
 
 def load_node_csv(path, index_col, encoders=None, **kwargs):
@@ -120,7 +120,7 @@ class ANPDataset(InMemoryDataset):
 
     def __init__(self, root, transform=None, pre_transform=None):
         super(ANPDataset, self).__init__(root, transform, pre_transform)
-        self.data, self.slices = torch.load(self.processed_paths[0], map_location=DEVICE)
+        self.data, self.slices = torch.load(self.processed_paths[0])
 
     @property
     def raw_file_names(self):

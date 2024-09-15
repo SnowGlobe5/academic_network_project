@@ -45,31 +45,33 @@ with open(PATH + 'info.json', 'w') as json_file:
 dataset = ANPDataset(root=ROOT)
 data = dataset[0]
 
+fold = [0, 1, 2, 3, 4]
+fold_string = '_'.join(map(str, fold))
+name_infosphere = f"5_infosphere_{fold_string}_{YEAR}_noisy.pt"
+
+# Load infosphere
+if os.path.exists(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}"):
+    print(DEVICE)
+    infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}", map_location=DEVICE)
+    print("Infosphere loaded!")
+    # Drop edges for each type of relationship
+    cites_edges = drop_edges(infosphere_edges[CITES], drop_percentage)
+    writes_edges = drop_edges(infosphere_edges[WRITES], drop_percentage)
+    about_edges = drop_edges(infosphere_edges[ABOUT], drop_percentage)
+
+    data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(cites_edges)
+    data['paper', 'infosphere_cites', 'paper'].edge_label = None
+    data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(writes_edges)
+    data['author', 'infosphere_writes', 'paper'].edge_label = None
+    data['paper', 'infosphere_about', 'topic'].edge_index = coalesce(about_edges)
+    data['paper', 'infosphere_about', 'topic'].edge_label = None
+else:
+    raise Exception(f"{name_infosphere} not found!")
+
 # Add infosphere data if requested
 if infosphere_type != 0:
     if infosphere_type == 1:
-        fold = [0, 1, 2, 3, 4]
-        fold_string = '_'.join(map(str, fold))
-        name_infosphere = f"{infosphere_parameters}_infosphere_{fold_string}_{YEAR}_noisy.pt"
-
-        # Load infosphere
-        if os.path.exists(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}"):
-            print(DEVICE)
-            infosphere_edges = torch.load(f"{ROOT}/computed_infosphere/{YEAR}/{name_infosphere}", map_location=DEVICE)
-            print("Infosphere loaded!")
-            # Drop edges for each type of relationship
-            cites_edges = drop_edges(infosphere_edges[CITES], drop_percentage)
-            writes_edges = drop_edges(infosphere_edges[WRITES], drop_percentage)
-            about_edges = drop_edges(infosphere_edges[ABOUT], drop_percentage)
-    
-            data['paper', 'infosphere_cites', 'paper'].edge_index = coalesce(cites_edges)
-            data['paper', 'infosphere_cites', 'paper'].edge_label = None
-            data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(writes_edges)
-            data['author', 'infosphere_writes', 'paper'].edge_label = None
-            data['paper', 'infosphere_about', 'topic'].edge_index = coalesce(about_edges)
-            data['paper', 'infosphere_about', 'topic'].edge_label = None
-        else:
-            raise Exception(f"{name_infosphere} not found!")
+        raise Exception(f"1 already added!")
         
     elif infosphere_type == 2:
         infosphere_edge = create_infosphere_top_papers_edge_index(data, int(infosphere_parameters), YEAR)
