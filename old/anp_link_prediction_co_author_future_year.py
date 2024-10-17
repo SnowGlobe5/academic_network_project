@@ -58,15 +58,15 @@ else:
     raise Exception(f"{name_infosphere} not found!!")
 
 # Use already existing co-author edge (if exist)
-if os.path.exists(f"{ROOT}/processed/co_author_edge{YEAR+1}.pt"):
+if os.path.exists(f"{ROOT}/processed/author_edge{YEAR+1}.pt"):
     print("Co-author edge found!")
-    data['author', 'co_author', 'author'].edge_index = torch.load(f"{ROOT}/processed/co_author_edge{YEAR+1}.pt")
+    data['author', 'co_author', 'author'].edge_index = torch.load(f"{ROOT}/processed/author_edge{YEAR+1}.pt")
     data['author', 'co_author', 'author'].edge_label = None
 else:
     print("Generating co-author edge...")
-    data['author', 'co_author', 'author'].edge_index = generate_co_author_edge_year(data, YEAR+1)
+    data['author', 'co_author', 'author'].edge_index = get_author_edge_year(data, YEAR+1)
     data['author', 'co_author', 'author'].edge_label = None
-    torch.save(data['author', 'co_author', 'author'].edge_index, f"{ROOT}/processed/co_author_edge{YEAR+1}.pt")
+    torch.save(data['author', 'co_author', 'author'].edge_index, f"{ROOT}/processed/author_edge{YEAR+1}.pt")
 
 # Make paper features float and the graph undirected
 data['paper'].x = data['paper'].x.to(torch.float)

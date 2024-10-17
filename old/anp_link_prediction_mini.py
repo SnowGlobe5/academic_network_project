@@ -8,7 +8,7 @@ from torch.nn import Linear
 import torch_geometric.transforms as T
 from torch_geometric.nn import SAGEConv, to_hetero
 from academic_network_project.anp_core.anp_dataset import ANPDataset
-from anp_utils import generate_co_author_edge_year, anp_filter_data
+from anp_utils import get_author_edge_year, anp_filter_data
 
 current_date = datetime.now().strftime("%Y-%m-%d")
 
@@ -36,7 +36,7 @@ mini_loader = HGTLoader(sub_graph_mini, num_samples=[4096] * 4, shuffle=True,
                             input_nodes=mini_input_nodes, batch_size=BATCH_SIZE)
 
 data = next(iter(mini_loader))
-generate_co_author_edge_year(data, YEAR_TRAIN)
+get_author_edge_year(data, YEAR_TRAIN)
 data['author'].x = torch.eye(data['author'].num_nodes, device=device)
 del data['author'].num_nodes
 

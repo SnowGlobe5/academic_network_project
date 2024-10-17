@@ -13,12 +13,7 @@ Functions:
 - expand_1_hop_graph: Expand the graph by adding 1-hop neighbors of the given nodes.
 - anp_filter_data: Filter the data based on certain criteria for ANP.
 - anp_simple_filter_data: Filter the data based on a simple criteria for ANP.
-- generate_co_author_edge_year: Generate co-author edges for a given year in ANP.
-- generate_co_author_edge_year_history: Generate historical co-author edges up to a given year in ANP.
-- generate_difference_co_author_edge_year_single: Generate the difference in co-author edges between consecutive years for ANP.
-- generate_difference_co_author_edge_year: Generate the difference in co-author edges between consecutive years with history for ANP.
-- generate_next_topic_edge_year: Generate edges connecting authors and topics for a given year in ANP.
-- generate_difference_next_topic_edge_year: Generate the difference in next-topic edges between consecutive years for ANP.
+....
 - anp_save: Save the model and associated information for ANP.
 - anp_load: Load the saved model for ANP.
 - generate_graph: Generate and save graphs based on training and validation metrics for ANP.
@@ -206,255 +201,182 @@ def anp_simple_filter_data(data, root, folds, max_year):
     return data.subgraph(subset_dict)
 
 
-def generate_co_author_edge_year(data, year):
+def get_author_edge_year(data, year, device):
     """
-  Generate co-author edges for a given year.
+    Get edges connecting authors and their 2 hops neighbors for a given year.
 
-  Args:
-  - data (Data): The input data.
-  - year (int): The target year.
+    Args:
+    - data (Data): The input data.
+    - year (int): The target year.
 
-  Returns:
-  - Tensor: The generated co-author edge index.
-
-  """
+    Returns:
+    - dict: A dictionary containing tensors for edges between authors, papers, and topics.
+    """
     years = data['paper'].x[:, 0]
     mask = years == year
     papers = torch.where(mask)[0]
-    edge_index = data['author', 'writes', 'paper'].edge_index
-    edge_index = edge_index.to(DEVICE)
-    src = []
-    dst = []
-    dict_tracker = {}
+    edge_index_writes = data['author', 'writes', 'paper'].edge_index.to(device)
+    edge_index_about = data['paper', 'about', 'topic'].edge_index.to(device)
+    edge_index_cites = data['paper', 'cites', 'paper'].edge_index.to(device)
+
+    src = {"author": [], "paper": [], "topic": []}
+    dst = {"author": [], "paper": [], "topic": []}
+    dict_tracker = {"author": {}, "paper": {}, "topic": {}}
     time = datetime.now()
     tot = len(papers)
+
     for i, paper in enumerate(papers):
         if i % 10000 == 0:
-            print(f"papers processed: {i}/{tot} - {i / tot * 100}% - {str(datetime.now() - time)}")
-        sub_edge_index, _ = expand_1_hop_edge_index(edge_index, paper, flow='source_to_target')
-        for author in sub_edge_index[0].tolist():
-            for co_author in sub_edge_index[0].tolist():
-                if author != co_author and not dict_tracker.get((author, co_author)):
-                    dict_tracker[(author, co_author)] = True
-                    src.append(author)
-                    dst.append(co_author)
-    return torch.tensor([src, dst])
+            print(f"papers processed: {i}/{tot} - {i / tot * 100:.2f}% - {str(datetime.now() - time)}")
+        
+        sub_edge_index_writes, _ = expand_1_hop_edge_index(edge_index_writes, paper, flow='source_to_target')
+        sub_edge_index_about, _ = expand_1_hop_edge_index(edge_index_about, paper, flow='target_to_source')
+        sub_edge_index_cites, _ = expand_1_hop_edge_index(edge_index_cites, paper, flow='target_to_source')
+
+        for author in sub_edge_index_writes[0].tolist():
+            for co_author in sub_edge_index_writes[0].tolist():
+                if author != co_author and not dict_tracker["author"].get((author, co_author)):
+                    dict_tracker["author"][(author, co_author)] = True
+                    src["author"].append(author)
+                    dst["author"].append(co_author)
+
+            for cited_paper in sub_edge_index_cites[1].tolist():
+                if not dict_tracker["paper"].get((author, cited_paper)):
+                    dict_tracker["paper"][(author, cited_paper)] = True
+                    src["paper"].append(author)
+                    dst["paper"].append(cited_paper)
+
+            for topic in sub_edge_index_about[1].tolist():
+                if not dict_tracker["topic"].get((author, topic)):
+                    dict_tracker["topic"][(author, topic)] = True
+                    src["topic"].append(author)
+                    dst["topic"].append(topic)
+
+    return {
+        "author": torch.tensor([src["author"], dst["author"]]),
+        "paper": torch.tensor([src["paper"], dst["paper"]]),
+        "topic": torch.tensor([src["topic"], dst["topic"]])
+    }
 
 
-def generate_co_author_edge_year_history(data, year):
+def get_author_edge_history(data, year, device):
     """
-  Generate historical co-author edges up to a given year.
+    Get edges connecting authors and their 2 hops neighbors up to a given year.
 
-  Args:
-  - data (Data): The input data.
-  - year (int): The target year.
+    Args:
+    - data (Data): The input data.
+    - year (int): The target year.
 
-  Returns:
-  - Tensor: The generated co-author edge index.
-
-  """
+    Returns:
+    - dict: A dictionary containing tensors for edges between authors, papers, and topics.
+    """
     years = data['paper'].x[:, 0]
     mask = years <= year
     papers = torch.where(mask)[0]
-    edge_index = data['author', 'writes', 'paper'].edge_index
-    edge_index = edge_index.to(DEVICE)
-    src = []
-    dst = []
-    dict_tracker = {}
+    edge_index_writes = data['author', 'writes', 'paper'].edge_index.to(device)
+    edge_index_about = data['paper', 'about', 'topic'].edge_index.to(device)
+    edge_index_cites = data['paper', 'cites', 'paper'].edge_index.to(device)
+
+    src = {"author": [], "paper": [], "topic": []}
+    dst = {"author": [], "paper": [], "topic": []}
+    dict_tracker = {"author": {}, "paper": {}, "topic": {}}
     time = datetime.now()
     tot = len(papers)
+
     for i, paper in enumerate(papers):
         if i % 10000 == 0:
-            print(f"papers processed: {i}/{tot} - {i / tot * 100}% - {str(datetime.now() - time)}")
-        sub_edge_index, _ = expand_1_hop_edge_index(edge_index, paper, flow='source_to_target')
-        for author in sub_edge_index[0].tolist():
-            for co_author in sub_edge_index[0].tolist():
-                if author != co_author and not dict_tracker.get((author, co_author)):
-                    dict_tracker[(author, co_author)] = True
-                    src.append(author)
-                    dst.append(co_author)
-    return torch.tensor([src, dst])
-
-
-def generate_difference_co_author_edge_year_single(data, year, root):
-    """
-  Generate the difference in co-author edges between consecutive years.
-
-  Args:
-  - data (Data): The input data.
-  - year (int): The target year.
-  - root (str): The root directory.
-
-  Returns:
-  - Tensor: The difference in co-author edge index.
-
-  """
-    difference_edge_index = torch.tensor([[], []]).to(torch.int64).to(DEVICE)
-    # Use already existing co-author edge (if exist)
-    if os.path.exists(f"{root}/processed/co_author_edge{year}.pt"):
-        print("Current co-author edge found!")
-        current_edge_index = torch.load(f"{root}/processed/co_author_edge{year}.pt", map_location=DEVICE)
-    else:
-        print("Generating current co-author edge...")
-        current_edge_index = generate_co_author_edge_year(data, year)
-        torch.save(current_edge_index, f"{root}/processed/co_author_edge{year}.pt")
-
-    if os.path.exists(f"{root}/processed/co_author_edge{year + 1}.pt"):
-        print("Next co-author edge found!")
-        next_edge_index = torch.load(f"{root}/processed/co_author_edge{year + 1}.pt", map_location=DEVICE)
-    else:
-        print("Generating next co-author edge...")
-        next_edge_index = generate_co_author_edge_year(data, year + 1)
-        torch.save(next_edge_index, f"{root}/processed/co_author_edge{year + 1}.pt")
-
-    time = datetime.now()
-    tot = len(next_edge_index[0])
-    for i in range(tot):
-        if i % 10000 == 0:
-            print(f"author edge processed: {i}/{tot} - {i / tot * 100}% - {str(datetime.now() - time)}")
-        mask = current_edge_index[0] == next_edge_index[0][i]
-        if not next_edge_index[1][i] in current_edge_index[:, mask][1]:
-            difference_edge_index = torch.cat((difference_edge_index,
-                                               torch.Tensor([[next_edge_index[0][i]], [next_edge_index[1][i]]]).to(
-                                                   torch.int64).to(DEVICE)), dim=1)
-
-    return difference_edge_index
-
-
-def generate_difference_co_author_edge_year(data, year, root):
-    """
-  Generate the difference in co-author edges between consecutive years with history.
-
-  Args:
-  - data (Data): The input data.
-  - year (int): The target year.
-  - root (str): The root directory.
-
-  Returns:
-  - Tensor: The difference in co-author edge index.
-
-  """
-    difference_edge_index = torch.tensor([[], []]).to(torch.int64).to(DEVICE)
-    # Use already existing co-author edge (if exist)
-    if os.path.exists(f"{root}/processed/co_author_edge{year}_history.pt"):
-        print("Current history co-author edge found!")
-        current_edge_index = torch.load(f"{root}/processed/co_author_edge{year}_history.pt", map_location=DEVICE)
-    else:
-        print("Generating current history co-author edge...")
-        current_edge_index = generate_co_author_edge_year_history(data, year)
-        torch.save(current_edge_index, f"{root}/processed/co_author_edge{year}_history.pt")
-
-    if os.path.exists(f"{root}/processed/co_author_edge{year + 1}.pt"):
-        print("Next co-author edge found!")
-        next_edge_index = torch.load(f"{root}/processed/co_author_edge{year + 1}.pt", map_location=DEVICE)
-    else:
-        print("Generating next co-author edge...")
-        next_edge_index = generate_co_author_edge_year(data, year + 1)
-        torch.save(next_edge_index, f"{root}/processed/co_author_edge{year + 1}.pt")
-
-    set_src = torch.unique(next_edge_index[0], sorted=True)
-    time = datetime.now()
-    tot = len(set_src)
-    for i, src in enumerate(set_src):
-        if i % 1000 == 0:
-            print(f"author edge processed: {i}/{tot} - {i / tot * 100}% - {str(datetime.now() - time)}")
-
-        mask = current_edge_index[0] == src
-        dst_old = current_edge_index[:, mask][1]
-
-        mask = next_edge_index[0] == src
-        dst_new = next_edge_index[:, mask][1]
-
-        diff = dst_new[(dst_new.view(1, -1) != dst_old.view(-1, 1)).all(dim=0)]
-
-        for dst in diff:
-            difference_edge_index = torch.cat(
-                (difference_edge_index, torch.Tensor([[src], [dst]]).to(torch.int64).to(DEVICE)), dim=1)
-            # print(dst_old)
-            # print(dst_new)
-            # print(diff)
-    return difference_edge_index
-
-
-def generate_next_topic_edge_year(data, year):
-    """
-  Generate edges connecting authors and topics for a given year.
-
-  Args:
-  - data (Data): The input data.
-  - year (int): The target year.
-
-  Returns:
-  - Tensor: The generated author-topic edge index.
-
-  """
-    years = data['paper'].x[:, 0]
-    mask = years == year
-    papers = torch.where(mask)[0]
-    edge_index_writes = data['author', 'writes', 'paper'].edge_index
-    edge_index_writes = edge_index_writes.to(DEVICE)
-    edge_index_about = data['paper', 'about', 'topic'].edge_index
-    edge_index_about = edge_index_about.to(DEVICE)
-    src = []
-    dst = []
-    dict_tracker = {}
-    time = datetime.now()
-    tot = len(papers)
-    for i, paper in enumerate(papers):
-        if i % 10000 == 0:
-            print(f"papers processed: {i}/{tot} - {i / tot * 100}% - {str(datetime.now() - time)}")
+            print(f"papers processed: {i}/{tot} - {i / tot * 100:.2f}% - {str(datetime.now() - time)}")
+        
         sub_edge_index_writes, _ = expand_1_hop_edge_index(edge_index_writes, paper, flow='source_to_target')
         sub_edge_index_about, _ = expand_1_hop_edge_index(edge_index_about, paper, flow='target_to_source')
+        sub_edge_index_cites, _ = expand_1_hop_edge_index(edge_index_cites, paper, flow='target_to_source')
+
         for author in sub_edge_index_writes[0].tolist():
+            for co_author in sub_edge_index_writes[0].tolist():
+                if author != co_author and not dict_tracker["author"].get((author, co_author)):
+                    dict_tracker["author"][(author, co_author)] = True
+                    src["author"].append(author)
+                    dst["author"].append(co_author)
+
+            for cited_paper in sub_edge_index_cites[1].tolist():
+                if not dict_tracker["paper"].get((author, cited_paper)):
+                    dict_tracker["paper"][(author, cited_paper)] = True
+                    src["paper"].append(author)
+                    dst["paper"].append(cited_paper)
+
             for topic in sub_edge_index_about[1].tolist():
-                if not dict_tracker.get((author, topic)):
-                    dict_tracker[(author, topic)] = True
-                    src.append(author)
-                    dst.append(topic)
-    return torch.tensor([src, dst])
+                if not dict_tracker["topic"].get((author, topic)):
+                    dict_tracker["topic"][(author, topic)] = True
+                    src["topic"].append(author)
+                    dst["topic"].append(topic)
 
+    return {
+        "author": torch.tensor([src["author"], dst["author"]]),
+        "paper": torch.tensor([src["paper"], dst["paper"]]),
+        "topic": torch.tensor([src["topic"], dst["topic"]])
+    }
 
-def generate_difference_next_topic_edge_year(data, year, root):
+def get_difference_author_edge_year(data, year, device, root="../anp_data"):
     """
-  Generate the difference in next-topic edges between consecutive years.
+    Generate the difference in edges between consecutive years with history, considering all types of nodes.
 
-  Args:
-  - data (Data): The input data.
-  - year (int): The target year.
-  - root (str): The root directory.
+    Args:
+    - data (Data): The input data.
+    - year (int): The target year.
+    - root (str): The root directory.
 
-  Returns:
-  - Tensor: The difference in next-topic edge index.
+    Returns:
+    - dict: A dictionary containing the difference in edge indices for each type of node relation (author-paper, paper-topic, paper-paper).
+    """
+    difference_edge_index = {
+        "author": torch.tensor([[], []], dtype=torch.int64).to(device),
+        "paper": torch.tensor([[], []], dtype=torch.int64).to(device),
+        "topic": torch.tensor([[], []], dtype=torch.int64).to(device)
+    }
 
-  """
-    difference_edge_index = torch.tensor([[], []]).to(torch.int64).to(DEVICE)
-    # Use already existing next-topic edge (if exist)
-    if os.path.exists(f"{root}/processed/next_topic_edge{year}.pt"):
-        print("Current next-topic edge found!")
-        current_edge_index = torch.load(f"{root}/processed/next_topic_edge{year}.pt", map_location=DEVICE)
+    edge_types = ["author", "paper", "topic"]
+    
+    # Load or generate current year edges
+    if os.path.exists(f"{root}/processed/author_edge{year}_history.pt"):
+        print(f"Current history author edge found!")
+        current_edge_data = torch.load(f"{root}/processed/author_edge{year}_history.pt", map_location=device)
     else:
-        print("Generating current next-topic edge...")
-        current_edge_index = generate_next_topic_edge_year(data, year)
-        torch.save(current_edge_index, f"{root}/processed/next_topic_edge{year}.pt")
+        print(f"Generating current history author edge...")
+        current_edge_data = get_author_edge_history(data, year, device)
+        torch.save(current_edge_data, f"{root}/processed/author_edge{year}_history.pt")
 
-    if os.path.exists(f"{root}/processed/next_topic_edge{year + 1}.pt"):
-        print("Next next-topic edge found!")
-        next_edge_index = torch.load(f"{root}/processed/next_topic_edge{year + 1}.pt", map_location=DEVICE)
+    # Load or generate next year edges
+    if os.path.exists(f"{root}/processed/author_edge{year + 1}.pt"):
+        print(f"Next author edge found!")
+        next_edge_data = torch.load(f"{root}/processed/author_edge{year + 1}.pt", map_location=device)
     else:
-        print("Generating next next-topic edge...")
-        next_edge_index = generate_next_topic_edge_year(data, year + 1)
-        torch.save(next_edge_index, f"{root}/processed/next_topic_edge{year + 1}.pt")
+        print(f"Generating next author edge...")
+        next_edge_data = get_author_edge_year(data, year + 1, device)
+        torch.save(next_edge_data, f"{root}/processed/author_edge{year + 1}.pt")
 
-    time = datetime.now()
-    tot = len(next_edge_index[0])
-    for i in range(tot):
-        if i % 10000 == 0:
-            print(f"author edge processed: {i}/{tot} - {i / tot * 100}% - {str(datetime.now() - time)}")
-        mask = current_edge_index[0] == next_edge_index[0][i]
-        if not next_edge_index[1][i] in current_edge_index[:, mask][1]:
-            difference_edge_index = torch.cat((difference_edge_index,
-                                               torch.Tensor([[next_edge_index[0][i]], [next_edge_index[1][i]]]).to(
-                                                   torch.int64).to(DEVICE)), dim=1)
+    for edge_type in edge_types:
+        # Compute difference in edges
+        set_src = torch.unique(next_edge_data[edge_type][0], sorted=True)
+        time = datetime.now()
+        tot = len(set_src)
+        for i, src in enumerate(set_src):
+            if i % 1000 == 0:
+                print(f"{edge_type} edge processed: {i}/{tot} - {i / tot * 100:.2f}% - {str(datetime.now() - time)}")
+
+            # Edges in current year for this src node
+            mask = current_edge_data[edge_type][0] == src
+            dst_old = current_edge_data[edge_type][:, mask][1]
+
+            # Edges in next year for this src node
+            mask = next_edge_data[edge_type][0] == src
+            dst_new = next_edge_data[edge_type][:, mask][1]
+
+            # Find differences (new edges in next year)
+            diff = dst_new[(dst_new.view(1, -1) != dst_old.view(-1, 1)).all(dim=0)]
+
+            for dst in diff:
+                difference_edge_index[edge_type] = torch.cat(
+                    (difference_edge_index[edge_type], torch.Tensor([[src], [dst]]).to(torch.int64).to(device)), dim=1)
 
     return difference_edge_index
 
@@ -557,7 +479,7 @@ def anp_load(path):
   """
     with open(path + 'info.json', 'r') as json_file:
         data = json.load(json_file)
-    return torch.load(path + 'model.pt', map_location=DEVICE), data[-1]["data"]["epoch"]
+    return torch.load(path + 'model.pt', map_location=device), data[-1]["data"]["epoch"]
 
 
 def generate_graph(path, training_loss_list, validation_loss_list, training_accuracy_list, validation_accuracy_list,

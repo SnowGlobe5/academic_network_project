@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import torch_geometric.transforms as T
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.nn import Linear
-from torch_geometric.loader import LinkNeighborLoader
+from torch_geometric.loader import LinkNeighborLoader, NeighborLoader
 from torch_geometric.nn import HGTConv, Linear
 from torch_geometric.utils import coalesce
 from tqdm import tqdm
@@ -116,53 +116,69 @@ data['paper'].x = data['paper'].x.to(torch.float)
 data = T.ToUndirected()(data)
 data = data.to('cpu')
 
-# Training Data
 sub_graph_train = anp_simple_filter_data(data, root=ROOT, folds=[0, 1, 2, 3], max_year=YEAR)
-transform_train = T.RandomLinkSplit(
-    num_val=0,
-    num_test=0,
-    neg_sampling_ratio=1.0,
-    add_negative_train_samples=True,
-    edge_types=('author', 'co_author', 'author')
+train_loader = NeighborLoader(
+    data=sub_graph_train,
+    num_neighbors=[edge_number, 30],
+    batch_size=BATCH_SIZE,
+    input_nodes=('author')
 )
-train_data, _, _ = transform_train(sub_graph_train)
 
-# Validation Data
 sub_graph_val = anp_simple_filter_data(data, root=ROOT, folds=[4], max_year=YEAR)
-transform_val = T.RandomLinkSplit(
-    num_val=0,
-    num_test=0,
-    neg_sampling_ratio=1.0,
-    add_negative_train_samples=True,
-    edge_types=('author', 'co_author', 'author')
-)
-val_data, _, _ = transform_val(sub_graph_val)
-
-# Define seed edges:
-edge_label_index = train_data['author', 'co_author', 'author'].edge_label_index
-edge_label = train_data['author', 'co_author', 'author'].edge_label
-train_loader = LinkNeighborLoader(
-    data=train_data,
+val_loader = NeighborLoader(
+    data=sub_graph_val,
     num_neighbors=[edge_number, 30],
-    # neg_sampling_ratio=2.0,
-    edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
-    edge_label=edge_label,
-    batch_size=1024,
-    shuffle=True,
+    batch_size=BATCH_SIZE,
+    input_nodes=('author')
 )
 
-edge_label_index = val_data['author', 'co_author', 'author'].edge_label_index
-edge_label = val_data['author', 'co_author', 'author'].edge_label
-val_loader = LinkNeighborLoader(
-    data=val_data,
-    num_neighbors=[edge_number, 30],
-    edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
-    edge_label=edge_label,
-    batch_size=1024,
-    shuffle=False,
-)
+# # Training Data
+# sub_graph_train = anp_simple_filter_data(data, root=ROOT, folds=[0, 1, 2, 3], max_year=YEAR)
+# transform_train = T.RandomLinkSplit(
+#     num_val=0,
+#     num_test=0,
+#     neg_sampling_ratio=1.0,
+#     add_negative_train_samples=True,
+#     edge_types=('author', 'co_author', 'author')
+# )
+# train_data, _, _ = transform_train(sub_graph_train)
 
-# Delete the co-author edge (data will be used for data.metadata())
+# # Validation Data
+# sub_graph_val = anp_simple_filter_data(data, root=ROOT, folds=[4], max_year=YEAR)
+# transform_val = T.RandomLinkSplit(
+#     num_val=0,
+#     num_test=0,
+#     neg_sampling_ratio=1.0,
+#     add_negative_train_samples=True,
+#     edge_types=('author', 'co_author', 'author')
+# )
+# val_data, _, _ = transform_val(sub_graph_val)
+
+# # Define seed edges:
+# edge_label_index = train_data['author', 'co_author', 'author'].edge_label_index
+# edge_label = train_data['author', 'co_author', 'author'].edge_label
+# train_loader = LinkNeighborLoader(
+#     data=train_data,
+#     num_neighbors=[edge_number, 30],
+#     # neg_sampling_ratio=2.0,
+#     edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
+#     edge_label=edge_label,
+#     batch_size=1024,
+#     shuffle=True,
+# )
+
+# edge_label_index = val_data['author', 'co_author', 'author'].edge_label_index
+# edge_label = val_data['author', 'co_author', 'author'].edge_label
+# val_loader = LinkNeighborLoader(
+#     data=val_data,
+#     num_neighbors=[edge_number, 30],
+#     edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
+#     edge_label=edge_label,
+#     batch_size=1024,
+#     shuffle=False,
+# )
+
+# # Delete the co-author edge (data will be used for data.metadata())
 del data['author', 'co_author', 'author']
 
 
@@ -195,31 +211,26 @@ class GNNEncoder(torch.nn.Module):
 
         return x_dict
 
-class EdgeDecoder(torch.nn.Module):
+class NodeDecoder(torch.nn.Module):
     def __init__(self, hidden_channels):
         super().__init__()
-        self.lin1 = Linear(2 * hidden_channels, hidden_channels)
-        self.lin2 = Linear(hidden_channels, 1)
-    def forward(self, z_dict, edge_label_index):
-        row, col = edge_label_index
-        z = torch.cat([z_dict['author'][row], z_dict['author'][col]], dim=-1)
+        self.lin = Linear(hidden_channels, hidden_channels)
 
-        z = self.lin1(z).relu()
-        z = self.lin2(z)
-        return z.view(-1)
-
+    def forward(self, z_dict, input_nodes):
+        z_input = z_dict['author'][input_nodes]
+        z_all = z_dict['author']
+        scores = torch.matmul(self.lin(z_input), z_all.t())
+        return F.sigmoid(scores)
 
 class Model(torch.nn.Module):
     def __init__(self, hidden_channels):
         super().__init__()
         self.encoder = GNNEncoder(hidden_channels, hidden_channels, 2, 1, data.metadata())
-        # self.encoder = to_hetero(self.encoder, data.metadata(), aggr='sum')
-        self.decoder = EdgeDecoder(hidden_channels)
+        self.decoder = NodeDecoder(hidden_channels)
 
-    def forward(self, x_dict, edge_index_dict, edge_label_index):
+    def forward(self, x_dict, edge_index_dict, input_nodes):
         z_dict = self.encoder(x_dict, edge_index_dict)
-        return self.decoder(z_dict, edge_label_index)
-
+        return self.decoder(z_dict, input_nodes)
 
 # Initialize model, optimizer, and embeddings
 model = Model(hidden_channels=32).to(DEVICE)
@@ -229,98 +240,84 @@ embedding_author = torch.nn.Embedding(data["author"].num_nodes, 32).to(DEVICE)
 embedding_topic = torch.nn.Embedding(data["topic"].num_nodes, 32).to(DEVICE)
 
 
-# Training and Testing Functions
 def train():
     model.train()
-    total_examples = total_correct = total_loss = 0
-    for i, batch in enumerate(tqdm(train_loader)):
+    total_loss = 0
+    for batch in tqdm(train_loader):
         batch = batch.to(DEVICE)
-        edge_label_index = batch['author', 'author'].edge_label_index
-        edge_label = batch['author', 'author'].edge_label
-        del batch['author', 'co_author', 'author']
-
-        # Add node embeddings for message passing
-        batch['author'].x = embedding_author(batch['author'].n_id)
-        batch['topic'].x = embedding_topic(batch['topic'].n_id)
-
         optimizer.zero_grad()
-        pred = model(batch.x_dict, batch.edge_index_dict, edge_label_index)
-        target = edge_label
-        loss = F.binary_cross_entropy_with_logits(pred, target)
+        
+        co_authors = batch['author', 'author'].edge_index
+        del batch['author', 'author']
+        
+        input_nodes = torch.arange(0, BATCH_SIZE, device=DEVICE)
+        
+        batch['author'].x = embedding_author(batch['author'].n_id)
+        batch['topic'].x = embedding_topic(batch['topic'].n_id)         
+        
+        pred = model(batch.x_dict, batch.edge_index_dict, input_nodes)
+        
+        target = torch.zeros_like(pred)
+        for i, node in enumerate(input_nodes):
+            mask = (co_authors[0] == node)
+            future_coauthors = co_authors[1][mask]
+            target[i, future_coauthors] = 1
+        
+        loss = F.binary_cross_entropy(pred, target)
         loss.backward()
         optimizer.step()
-
-        total_loss += float(loss) * pred.numel()
-        total_examples += pred.numel()
-
-        # Calculate accuracy
-        pred = pred.clamp(min=0, max=1)
-        total_correct += int((torch.round(pred, decimals=0) == target).sum())
-
-    return total_correct / total_examples, total_loss / total_examples
-
+        
+        total_loss += float(loss)
+    
+    return total_loss / (len(train_loader) * BATCH_SIZE)
 
 @torch.no_grad()
 def test(loader):
     model.eval()
-    total_examples = total_correct = total_loss = 0
-    for i, batch in enumerate(tqdm(loader)):
+    total_loss = 0
+    for batch in tqdm(loader):
         batch = batch.to(DEVICE)
-        edge_label_index = batch['author', 'author'].edge_label_index
-        edge_label = batch['author', 'author'].edge_label
-        del batch['author', 'co_author', 'author']
-
-        # Add node embeddings for message passing
+        optimizer.zero_grad()
+        
+        co_authors = batch['author', 'author'].edge_index
+        del batch['author', 'author']
+        
+        input_nodes = torch.arange(0, BATCH_SIZE, device=DEVICE)
+        
         batch['author'].x = embedding_author(batch['author'].n_id)
-        batch['topic'].x = embedding_topic(batch['topic'].n_id)
-
-        pred = model(batch.x_dict, batch.edge_index_dict, edge_label_index)
-        target = edge_label
-        loss = F.binary_cross_entropy_with_logits(pred, target)
-
-        total_loss += float(loss) * pred.numel()
-        total_examples += pred.numel()
-
-        # Calculate accuracy
-        pred = pred.clamp(min=0, max=1)
-        total_correct += int((torch.round(pred, decimals=0) == target).sum())
-
-        # Confusion matrix
-        for i in range(len(target)):
-            if target[i].item() == 0:
-                if torch.round(pred, decimals=0)[i].item() == 0:
-                    confusion_matrix['tn'] += 1
-                else:
-                    confusion_matrix['fn'] += 1
-            else:
-                if torch.round(pred, decimals=0)[i].item() == 1:
-                    confusion_matrix['tp'] += 1
-                else:
-                    confusion_matrix['fp'] += 1
-
-    return total_correct / total_examples, total_loss / total_examples
+        batch['topic'].x = embedding_topic(batch['topic'].n_id)         
+        
+        pred = model(batch.x_dict, batch.edge_index_dict, input_nodes)
+        
+        target = torch.zeros_like(pred)
+        for i, node in enumerate(input_nodes):
+            mask = (co_authors[0] == node)
+            future_coauthors = co_authors[1][mask]
+            target[i, future_coauthors] = 1
+        
+        loss = F.binary_cross_entropy(pred, target)
+        total_loss += float(loss)
+    
+    return total_loss / (len(loader) * BATCH_SIZE)
 
 
 # Main Training Loop
 training_loss_list = []
 validation_loss_list = []
-training_accuracy_list = []
-validation_accuracy_list = []
-confusion_matrix = {'tp': 0, 'fp': 0, 'fn': 0, 'tn': 0}
 best_val_loss = np.inf
 patience = 5
 counter = 0
 
 # Training Loop
 for epoch in range(1, 100):
-    train_acc, train_loss = train()
-    confusion_matrix = {'tp': 0, 'fp': 0, 'fn': 0, 'tn': 0}
-    val_acc, val_loss = test(val_loader)
+    train_loss = train()
+    val_loss = test(val_loader)
+    print(f'Epoch: {epoch:03d}, Train Loss: {train_loss:.10f}, Val Loss: {val_loss:.10f}')
 
     # Save the model if validation loss improves
     if val_loss < best_val_loss:
         best_val_loss = val_loss
-        anp_save(model, PATH, epoch, train_loss, val_loss, val_acc)
+        # anp_save(model, PATH, epoch, train_loss, val_loss, val_acc)
         counter = 0  # Reset the counter if validation loss improves
     else:
         counter += 1
@@ -334,11 +331,25 @@ for epoch in range(1, 100):
 
     training_loss_list.append(train_loss)
     validation_loss_list.append(val_loss)
-    training_accuracy_list.append(train_acc)
-    validation_accuracy_list.append(val_acc)
+    
+# ... (il resto del codice rimane simile, con adattamenti per il nuovo modello)
 
-    # Print epoch results
-    print(f'Epoch: {epoch:02d}, Loss: {train_loss:.4f} - {val_loss:.4f}, Accuracy: {val_acc:.4f}')
+# Funzione per predire le connessioni future più probabili
+# def predict_future_connections(node_id, top_k=10):
+#     model.eval()
+#     with torch.no_grad():
+#         batch = next(iter(NeighborLoader(data, num_neighbors=[-1], batch_size=1, input_nodes=('author', node_id))))
+#         batch = batch.to(DEVICE)
+#         pred = model(batch.x_dict, batch.edge_index_dict, 0)  # 0 perché c'è solo un nodo di input
+        
+#         # Ottieni i top_k nodi più probabili
+#         top_k_values, top_k_indices = torch.topk(pred, k=top_k)
+        
+#         return list(zip(top_k_indices.cpu().numpy(), top_k_values.cpu().numpy()))
 
-generate_graph(PATH, training_loss_list, validation_loss_list, training_accuracy_list, validation_accuracy_list,
-               confusion_matrix)
+# # Esempio di utilizzo
+# node_id = 123  # ID del nodo di input
+# future_connections = predict_future_connections(node_id)
+# print(f"Le {len(future_connections)} connessioni future più probabili per il nodo {node_id} sono:")
+# for index, probability in future_connections:
+#     print(f"Nodo {index}: probabilità {probability:.4f}")

@@ -47,15 +47,15 @@ else:
 
 
 # Use already existing co-author edge (if exist)
-if os.path.exists(f"{ROOT}/processed/difference_co_author_edge{YEAR}.pt"):
+if os.path.exists(f"{ROOT}/processed/difference_author_edge{YEAR}.pt"):
     print("Difference co-author edge found!")
-    data['author', 'difference_co_author', 'author'].edge_index = torch.load(f"{ROOT}/processed/difference_co_author_edge{YEAR}.pt")
+    data['author', 'difference_co_author', 'author'].edge_index = torch.load(f"{ROOT}/processed/difference_author_edge{YEAR}.pt")
     data['author', 'difference_co_author', 'author'].edge_label = None
 else:
     print("Generating difference co-author edge...")
-    data['author', 'difference_co_author', 'author'].edge_index = generate_difference_co_author_edge_year(data, YEAR, ROOT)
+    data['author', 'difference_co_author', 'author'].edge_index = get_difference_author_edge_year(data, YEAR, ROOT)
     data['author', 'difference_co_author', 'author'].edge_label = None
-    torch.save(data['author', 'difference_co_author', 'author'].edge_index, f"{ROOT}/processed/difference_co_author_edge{YEAR}.pt")
+    torch.save(data['author', 'difference_co_author', 'author'].edge_index, f"{ROOT}/processed/difference_author_edge{YEAR}.pt")
 
 # Make paper features float and the graph undirected
 data['paper'].x = data['paper'].x.to(torch.float)

@@ -94,21 +94,20 @@ if infosphere_type != 0:
         data['author', 'infosphere', 'paper'].edge_label = None
 
 # Try to predict all the future co-author or just the new one (not present in history)
-coauthor_function = generate_difference_co_author_edge_year if only_new else generate_co_author_edge_year
-coauthor_year = YEAR if only_new else YEAR + 1
-coauthor_file = f"{ROOT}/processed/difference_co_author_edge{coauthor_year}.pt" if only_new \
-    else f"{ROOT}/processed/co_author_edge{coauthor_year}.pt"
+label_function = get_difference_author_edge_year if only_new else get_author_edge_year
+label_year = YEAR if only_new else YEAR + 1
+label_file = f"{ROOT}/processed/difference_author_edge{label_year}.pt" if only_new \
+    else f"{ROOT}/processed/author_edge{label_year}.pt"
 
 # Use existing co-author edge if available, else generate
-if os.path.exists(coauthor_file):
-    print("Co-author edge found!")
-    data['author', 'co_author', 'author'].edge_index = torch.load(coauthor_file, map_location=DEVICE)
-    data['author', 'co_author', 'author'].edge_label = None
+if os.path.exists(label_file):
+    print("Label edge found!")
+    labels = torch.load(label_file, map_location=DEVICE)
 else:
-    print("Generating co-author edge...")
-    data['author', 'co_author', 'author'].edge_index = coauthor_function(data, coauthor_year)
-    data['author', 'co_author', 'author'].edge_label = None
-    torch.save(data['author', 'co_author', 'author'].edge_index, coauthor_file)
+    print("Label edge...")
+    author_edge = label_function(data, label_year, DEVICE)
+    labels = author_edge
+    torch.save(author_edge, label_file)
 
 # Convert paper features to float and make the graph undirected
 data['paper'].x = data['paper'].x.to(torch.float)
@@ -130,56 +129,6 @@ val_loader = NeighborLoader(
     batch_size=BATCH_SIZE,
     input_nodes=('author')
 )
-
-# # Training Data
-# sub_graph_train = anp_simple_filter_data(data, root=ROOT, folds=[0, 1, 2, 3], max_year=YEAR)
-# transform_train = T.RandomLinkSplit(
-#     num_val=0,
-#     num_test=0,
-#     neg_sampling_ratio=1.0,
-#     add_negative_train_samples=True,
-#     edge_types=('author', 'co_author', 'author')
-# )
-# train_data, _, _ = transform_train(sub_graph_train)
-
-# # Validation Data
-# sub_graph_val = anp_simple_filter_data(data, root=ROOT, folds=[4], max_year=YEAR)
-# transform_val = T.RandomLinkSplit(
-#     num_val=0,
-#     num_test=0,
-#     neg_sampling_ratio=1.0,
-#     add_negative_train_samples=True,
-#     edge_types=('author', 'co_author', 'author')
-# )
-# val_data, _, _ = transform_val(sub_graph_val)
-
-# # Define seed edges:
-# edge_label_index = train_data['author', 'co_author', 'author'].edge_label_index
-# edge_label = train_data['author', 'co_author', 'author'].edge_label
-# train_loader = LinkNeighborLoader(
-#     data=train_data,
-#     num_neighbors=[edge_number, 30],
-#     # neg_sampling_ratio=2.0,
-#     edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
-#     edge_label=edge_label,
-#     batch_size=1024,
-#     shuffle=True,
-# )
-
-# edge_label_index = val_data['author', 'co_author', 'author'].edge_label_index
-# edge_label = val_data['author', 'co_author', 'author'].edge_label
-# val_loader = LinkNeighborLoader(
-#     data=val_data,
-#     num_neighbors=[edge_number, 30],
-#     edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
-#     edge_label=edge_label,
-#     batch_size=1024,
-#     shuffle=False,
-# )
-
-# # Delete the co-author edge (data will be used for data.metadata())
-del data['author', 'co_author', 'author']
-
 
 # Define model components
 class GNNEncoder(torch.nn.Module):
@@ -244,11 +193,8 @@ def train():
     total_loss = 0
     for batch in tqdm(train_loader):
         batch = batch.to(DEVICE)
+        original_ids = batch['author'].id
         optimizer.zero_grad()
-        
-        co_authors = batch['author', 'author'].edge_index
-        del batch['author', 'author']
-        
         input_nodes = torch.arange(0, BATCH_SIZE, device=DEVICE)
         
         batch['author'].x = embedding_author(batch['author'].n_id)
@@ -257,10 +203,11 @@ def train():
         pred = model(batch.x_dict, batch.edge_index_dict, input_nodes)
         
         target = torch.zeros_like(pred)
-        for i, node in enumerate(input_nodes):
-            mask = (co_authors[0] == node)
-            future_coauthors = co_authors[1][mask]
-            target[i, future_coauthors] = 1
+        for node in input_nodes:
+            mask = (labels["author"][0] == original_ids[node])
+            future_coauthors_ori_id = labels["author"][1][mask]
+            future_coauthors = torch.nonzero(original_ids.unsqueeze(1) == future_coauthors_ori_id.unsqueeze(0), as_tuple=False)[:, 0]
+            target[node, future_coauthors] = 1
         
         loss = F.binary_cross_entropy(pred, target)
         loss.backward()
