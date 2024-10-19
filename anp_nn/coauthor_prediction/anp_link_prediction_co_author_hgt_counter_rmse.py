@@ -218,8 +218,8 @@ def train():
         loss.backward()
         optimizer.step()
 
-        total_loss += float(loss) * pred.numel()
-        total_examples += pred.numel()
+        total_loss += float(loss) * BATCH_SIZE
+        total_examples += BATCH_SIZE
 
     return total_loss / total_examples
 
@@ -238,8 +238,8 @@ def test(loader):
         pred = model(batch.x_dict, batch.edge_index_dict, range(BATCH_SIZE))
         loss = F.mse_loss(pred, target).sqrt()
 
-        total_loss += float(loss) * pred.numel()
-        total_examples += pred.numel()
+        total_loss += float(loss) * BATCH_SIZE
+        total_examples += BATCH_SIZE
 
     return total_loss / total_examples
 

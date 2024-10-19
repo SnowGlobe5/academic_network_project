@@ -198,6 +198,7 @@ class Model(torch.nn.Module):
 
 # Initialize model, optimizer, and embeddings
 model = Model(hidden_channels=64).to(DEVICE)
+# torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 lr_scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
 embedding_author = torch.nn.Embedding(data["author"].num_nodes, 64).to(DEVICE)
@@ -205,6 +206,8 @@ embedding_topic = torch.nn.Embedding(data["topic"].num_nodes, 64).to(DEVICE)
 
 # Negative Binomial Loss Function
 def negative_binomial_loss(predicted_mean, predicted_dispersion, true_counts):
+    predicted_mean = torch.clamp(predicted_mean, min=1e-6)  # Prevent log(0)
+    predicted_dispersion = torch.clamp(predicted_dispersion, min=1e-6)  # Prevent log(0)
     term1 = torch.lgamma(true_counts + predicted_dispersion) - torch.lgamma(predicted_dispersion) - torch.lgamma(true_counts + 1)
     term2 = predicted_dispersion * (torch.log(predicted_dispersion) - torch.log(predicted_dispersion + predicted_mean))
     term3 = true_counts * (torch.log(predicted_mean) - torch.log(predicted_dispersion + predicted_mean))
@@ -226,12 +229,11 @@ def train():
         pred = model(batch.x_dict, batch.edge_index_dict, range(BATCH_SIZE))
         mean_pred, dispersion_pred = pred
         loss = negative_binomial_loss(mean_pred, dispersion_pred, target)
-        
         loss.backward()
         optimizer.step()
 
-        total_loss += float(loss) * pred.numel()
-        total_examples += pred.numel()
+        total_loss += float(loss) * BATCH_SIZE
+        total_examples += BATCH_SIZE
 
     return total_loss / total_examples
 
@@ -251,8 +253,8 @@ def test(loader):
         mean_pred, dispersion_pred = pred
         loss = negative_binomial_loss(mean_pred, dispersion_pred, target)
 
-        total_loss += float(loss) * pred.numel()
-        total_examples += pred.numel()
+        total_loss += float(loss) * BATCH_SIZE
+        total_examples += BATCH_SIZE
 
     return total_loss / total_examples
 
