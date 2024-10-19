@@ -224,7 +224,7 @@ def train():
 
         optimizer.zero_grad()
         pred = model(batch.x_dict, batch.edge_index_dict, range(BATCH_SIZE))
-        mean_pred, dispersion_pred = pred[:, 0], pred[:, 1]
+        mean_pred, dispersion_pred = pred
         loss = negative_binomial_loss(mean_pred, dispersion_pred, target)
         
         loss.backward()
@@ -248,7 +248,7 @@ def test(loader):
         batch['topic'].x = embedding_topic(batch['topic'].n_id)
 
         pred = model(batch.x_dict, batch.edge_index_dict, range(BATCH_SIZE))
-        mean_pred, dispersion_pred = pred[:, 0], pred[:, 1]
+        mean_pred, dispersion_pred = pred
         loss = negative_binomial_loss(mean_pred, dispersion_pred, target)
 
         total_loss += float(loss) * pred.numel()
