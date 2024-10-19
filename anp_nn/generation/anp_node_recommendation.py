@@ -166,9 +166,25 @@ class NodeDecoder(torch.nn.Module):
 
     def forward(self, z_dict, input_nodes):
         z_input = z_dict['author'][input_nodes]
-        z_all = z_dict['author']
-        scores = torch.matmul(self.lin(z_input), z_all.t())
-        return F.sigmoid(scores)
+
+        z_all_author = z_dict['author']
+        z_all_topic = z_dict['topic']
+        z_all_paper = z_dict['paper']
+
+        scores_author = torch.matmul(self.lin(z_input), z_all_author.t())
+        scores_topic = torch.matmul(self.lin(z_input), z_all_topic.t())
+        scores_paper = torch.matmul(self.lin(z_input), z_all_paper.t())
+
+        scores_author = F.sigmoid(scores_author)
+        scores_topic = F.sigmoid(scores_topic)
+        scores_paper = F.sigmoid(scores_paper)
+
+        return {
+            'author': scores_author,
+            'topic': scores_topic,
+            'paper': scores_paper
+        }
+
 
 class Model(torch.nn.Module):
     def __init__(self, hidden_channels):
@@ -202,14 +218,34 @@ def train():
         
         pred = model(batch.x_dict, batch.edge_index_dict, input_nodes)
         
-        target = torch.zeros_like(pred)
+        target = {
+            'author': torch.zeros_like(pred['author']),
+            'topic': torch.zeros_like(pred['topic']),
+            'paper': torch.zeros_like(pred['paper'])
+        }
+        
+        # Train on real future stuff
         for node in input_nodes:
             mask = (labels["author"][0] == original_ids[node])
             future_coauthors_ori_id = labels["author"][1][mask]
             future_coauthors = torch.nonzero(original_ids.unsqueeze(1) == future_coauthors_ori_id.unsqueeze(0), as_tuple=False)[:, 0]
-            target[node, future_coauthors] = 1
+            target['author'][node, future_coauthors] = 1
+
+            mask = (labels["topic"][0] == original_ids[node])
+            future_topics_ori_id = labels["topic"][1][mask]
+            future_topics = torch.nonzero(original_ids.unsqueeze(1) == future_topics_ori_id.unsqueeze(0), as_tuple=False)[:, 0]
+            target['topic'][node, future_topics] = 1
+
+            mask = (labels["paper"][0] == original_ids[node])
+            future_cited_papers_ori_id = labels["paper"][1][mask]
+            future_cited_papers = torch.nonzero(original_ids.unsqueeze(1) == future_cited_papers_ori_id.unsqueeze(0), as_tuple=False)[:, 0]
+            target['paper'][node, future_cited_papers] = 1
         
-        loss = F.binary_cross_entropy(pred, target)
+        loss_author = F.binary_cross_entropy(pred['author'], target['author'])
+        loss_topic = F.binary_cross_entropy(pred['topic'], target['topic'])
+        loss_paper = F.binary_cross_entropy(pred['paper'], target['paper'])
+
+        loss = loss_author + loss_topic + loss_paper
         loss.backward()
         optimizer.step()
         
@@ -223,11 +259,8 @@ def test(loader):
     total_loss = 0
     for batch in tqdm(loader):
         batch = batch.to(DEVICE)
+        original_ids = batch['author'].id
         optimizer.zero_grad()
-        
-        co_authors = batch['author', 'author'].edge_index
-        del batch['author', 'author']
-        
         input_nodes = torch.arange(0, BATCH_SIZE, device=DEVICE)
         
         batch['author'].x = embedding_author(batch['author'].n_id)
@@ -235,13 +268,37 @@ def test(loader):
         
         pred = model(batch.x_dict, batch.edge_index_dict, input_nodes)
         
-        target = torch.zeros_like(pred)
-        for i, node in enumerate(input_nodes):
-            mask = (co_authors[0] == node)
-            future_coauthors = co_authors[1][mask]
-            target[i, future_coauthors] = 1
+        target = {
+            'author': torch.zeros_like(pred['author']),
+            'topic': torch.zeros_like(pred['topic']),
+            'paper': torch.zeros_like(pred['paper'])
+        }
         
-        loss = F.binary_cross_entropy(pred, target)
+        # Train on real future stuff
+        for node in input_nodes:
+            mask = (labels["author"][0] == original_ids[node])
+            future_coauthors_ori_id = labels["author"][1][mask]
+            future_coauthors = torch.nonzero(original_ids.unsqueeze(1) == future_coauthors_ori_id.unsqueeze(0), as_tuple=False)[:, 0]
+            target['author'][node, future_coauthors] = 1
+
+            mask = (labels["topic"][0] == original_ids[node])
+            future_topics_ori_id = labels["topic"][1][mask]
+            future_topics = torch.nonzero(original_ids.unsqueeze(1) == future_topics_ori_id.unsqueeze(0), as_tuple=False)[:, 0]
+            target['topic'][node, future_topics] = 1
+
+            mask = (labels["paper"][0] == original_ids[node])
+            future_cited_papers_ori_id = labels["paper"][1][mask]
+            future_cited_papers = torch.nonzero(original_ids.unsqueeze(1) == future_cited_papers_ori_id.unsqueeze(0), as_tuple=False)[:, 0]
+            target['paper'][node, future_cited_papers] = 1
+        
+        loss_author = F.binary_cross_entropy(pred['author'], target['author'])
+        loss_topic = F.binary_cross_entropy(pred['topic'], target['topic'])
+        loss_paper = F.binary_cross_entropy(pred['paper'], target['paper'])
+
+        loss = loss_author + loss_topic + loss_paper
+        loss.backward()
+        optimizer.step()
+        
         total_loss += float(loss)
     
     return total_loss / (len(loader) * BATCH_SIZE)
@@ -278,24 +335,3 @@ for epoch in range(1, 100):
     training_loss_list.append(train_loss)
     validation_loss_list.append(val_loss)
     
-# ... (il resto del codice rimane simile, con adattamenti per il nuovo modello)
-
-# Funzione per predire le connessioni future più probabili
-# def predict_future_connections(node_id, top_k=10):
-#     model.eval()
-#     with torch.no_grad():
-#         batch = next(iter(NeighborLoader(data, num_neighbors=[-1], batch_size=1, input_nodes=('author', node_id))))
-#         batch = batch.to(DEVICE)
-#         pred = model(batch.x_dict, batch.edge_index_dict, 0)  # 0 perché c'è solo un nodo di input
-        
-#         # Ottieni i top_k nodi più probabili
-#         top_k_values, top_k_indices = torch.topk(pred, k=top_k)
-        
-#         return list(zip(top_k_indices.cpu().numpy(), top_k_values.cpu().numpy()))
-
-# # Esempio di utilizzo
-# node_id = 123  # ID del nodo di input
-# future_connections = predict_future_connections(node_id)
-# print(f"Le {len(future_connections)} connessioni future più probabili per il nodo {node_id} sono:")
-# for index, probability in future_connections:
-#     print(f"Nodo {index}: probabilità {probability:.4f}")
