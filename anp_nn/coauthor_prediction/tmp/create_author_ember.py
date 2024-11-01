@@ -1,43 +1,37 @@
-import json
-import os
-import sys
-import ast
-from datetime import datetime
-
-import numpy as np
 import torch
+import os
+from torch_geometric.utils import coalesce
+from academic_network_project.anp_core.anp_dataset import ANPDataset
+from academic_network_project.anp_core.anp_utils import drop_edges, create_infosphere_top_papers_edge_index
 import torch.nn.functional as F
 import torch_geometric.transforms as T
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.nn import Linear
-from torch_geometric.loader import LinkNeighborLoader
+from torch_geometric.loader import NeighborLoader
 from torch_geometric.nn import HGTConv, Linear
-from torch_geometric.utils import coalesce
 from tqdm import tqdm
 
-# Constants
-BATCH_SIZE = 4096
+# Hardcoded parameters from the filename
+infosphere_type = 1
+infosphere_parameters = 5
+only_new = False
+edge_number = 50
+drop_percentage = 0.0
+BATCH_SIZE = 4096  # Reduced batch size for memory optimization
 YEAR = 2019
 ROOT = "../anp_data"
-DEVICE = torch.device(f'cuda:{sys.argv[7]}' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device(f'cuda:1' if torch.cuda.is_available() else 'cpu')
+
 from academic_network_project.anp_core.anp_dataset import ANPDataset
 from academic_network_project.anp_core.anp_utils import *
 
-# Get command line arguments
-learning_rate = float(sys.argv[1])
-infosphere_type = int(sys.argv[2])
-infosphere_parameters = sys.argv[3]
-only_new = sys.argv[4].lower() == 'true'
-edge_number = int(sys.argv[5])
-drop_percentage = float(sys.argv[6])
+# Path to the pre-trained model
+model_path = '../anp_models/anp_link_prediction_co_author_hgt_embedding_1_5_False_-1_0.0_2024_10_22_17_46_56/model.pt'
 
-# Current timestamp for model saving
-current_date = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-PATH = f"../anp_models/{os.path.basename(sys.argv[0][:-3])}_{infosphere_type}_{infosphere_parameters}_{only_new}_{edge_number}_{drop_percentage}_{current_date}/"
-os.makedirs(PATH)
-with open(PATH + 'info.json', 'w') as json_file:
-    json.dump({'lr': learning_rate, 'infosphere_type': infosphere_type, 'infosphere_parameters': infosphere_parameters,
-               'only_new': only_new, 'edge_number': edge_number, 'drop_percentage': drop_percentage, 'data': []}, json_file)
+# Ensure the correct GPU device is used and clear cache
+torch.cuda.set_device(DEVICE)
+torch.cuda.empty_cache()
+
 
 
 # Create ANP dataset
@@ -117,7 +111,12 @@ data = T.ToUndirected()(data)
 data = data.to('cpu')
 
 # Training Data
-sub_graph_train = anp_simple_filter_data(data, root=ROOT, folds=[0, 1, 2, 3], max_year=YEAR)
+subset_dict = {}
+mask = data['paper'].x[:, 0] <= YEAR
+papers_list_year = torch.where(mask)
+subset_dict['paper'] = papers_list_year[0]
+data_0 = data.subgraph(subset_dict)
+
 transform_train = T.RandomLinkSplit(
     num_val=0,
     num_test=0,
@@ -125,46 +124,20 @@ transform_train = T.RandomLinkSplit(
     add_negative_train_samples=True,
     edge_types=('author', 'co_author', 'author')
 )
-train_data, _, _ = transform_train(sub_graph_train)
+train_data, _, _ = transform_train(data_0)
+train_data['author', 'co_author', 'author'].edge_index = train_data['author', 'co_author', 'author'].edge_label_index
+del train_data['author', 'co_author', 'author'].edge_label_index
 
-# Validation Data
-sub_graph_val = anp_simple_filter_data(data, root=ROOT, folds=[4], max_year=YEAR)
-transform_val = T.RandomLinkSplit(
-    num_val=0,
-    num_test=0,
-    neg_sampling_ratio=1.0,
-    add_negative_train_samples=True,
-    edge_types=('author', 'co_author', 'author')
-)
-val_data, _, _ = transform_val(sub_graph_val)
-
-# Define seed edges:
-edge_label_index = train_data['author', 'co_author', 'author'].edge_label_index
-edge_label = train_data['author', 'co_author', 'author'].edge_label
-train_loader = LinkNeighborLoader(
+author_loader = NeighborLoader(
     data=train_data,
-    num_neighbors=[edge_number, 30],
-    # neg_sampling_ratio=2.0,
-    edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
-    edge_label=edge_label,
-    batch_size=1024,
-    shuffle=True,
-)
-
-edge_label_index = val_data['author', 'co_author', 'author'].edge_label_index
-edge_label = val_data['author', 'co_author', 'author'].edge_label
-val_loader = LinkNeighborLoader(
-    data=val_data,
-    num_neighbors=[edge_number, 30],
-    edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
-    edge_label=edge_label,
-    batch_size=1024,
-    shuffle=False,
+    num_neighbors=[-1, -1],
+    input_nodes='author',
+    batch_size=BATCH_SIZE,
+    drop_last=False
 )
 
 # Delete the co-author edge (data will be used for data.metadata())
 del data['author', 'co_author', 'author']
-
 
 # Define model components
 class GNNEncoder(torch.nn.Module):
@@ -222,123 +195,48 @@ class Model(torch.nn.Module):
         z_dict = self.encoder(x_dict, edge_index_dict)
         return self.decoder(z_dict, edge_label_index)
 
+# Load the model
+model = torch.load(model_path, map_location=DEVICE)
+model.eval()  # Set to evaluation mode
+model.to(DEVICE)
 
-# Initialize model, optimizer, and embeddings
-model = Model(hidden_channels=32).to(DEVICE)
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-lr_scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
+encoder = model.encoder
 
-
-# Training and Testing Functions
-def train():
-    model.train()
-    total_examples = total_correct = total_loss = 0
-    for i, batch in enumerate(tqdm(train_loader)):
-        batch = batch.to(DEVICE)
-        edge_label_index = batch['author', 'author'].edge_label_index
-        edge_label = batch['author', 'author'].edge_label
-        del batch['author', 'co_author', 'author']
-
-        # Add node embeddings for message passing
-        batch['author'].x = model.embedding_author(batch['author'].n_id)
-        batch['topic'].x = model.embedding_topic(batch['topic'].n_id)
-
-        optimizer.zero_grad()
-        pred = model(batch.x_dict, batch.edge_index_dict, edge_label_index)
-        target = edge_label
-        loss = F.binary_cross_entropy_with_logits(pred, target)
-        loss.backward()
-        optimizer.step()
-
-        total_loss += float(loss) * pred.numel()
-        total_examples += pred.numel()
-
-        # Calculate accuracy
-        pred = pred.clamp(min=0, max=1)
-        total_correct += int((torch.round(pred, decimals=0) == target).sum())
-
-    return total_correct / total_examples, total_loss / total_examples
-
-
+# Function to generate author embeddings
 @torch.no_grad()
-def test(loader):
+def generate_author_embeddings(model, loader):
     model.eval()
-    total_examples = total_correct = total_loss = 0
-    for i, batch in enumerate(tqdm(loader)):
+    all_embeddings = []
+
+    for batch in tqdm(loader):
+        # Move the batch to the correct device
         batch = batch.to(DEVICE)
-        edge_label_index = batch['author', 'author'].edge_label_index
-        edge_label = batch['author', 'author'].edge_label
         del batch['author', 'co_author', 'author']
 
-        # Add node embeddings for message passing
         batch['author'].x = model.embedding_author(batch['author'].n_id)
         batch['topic'].x = model.embedding_topic(batch['topic'].n_id)
 
-        pred = model(batch.x_dict, batch.edge_index_dict, edge_label_index)
-        target = edge_label
-        loss = F.binary_cross_entropy_with_logits(pred, target)
+        # Get embeddings
+        embeddings = model.encoder(batch.x_dict, batch.edge_index_dict)
 
-        total_loss += float(loss) * pred.numel()
-        total_examples += pred.numel()
+        # Save embeddings for authors
+        num_authors_in_batch = batch['author'].batch_size 
+        author_embeddings = embeddings['author'][0:num_authors_in_batch]
 
-        # Calculate accuracy
-        pred = pred.clamp(min=0, max=1)
-        total_correct += int((torch.round(pred, decimals=0) == target).sum())
+        # Append to results
+        all_embeddings.append(author_embeddings.cpu())
 
-        # Confusion matrix
-        for i in range(len(target)):
-            if target[i].item() == 0:
-                if torch.round(pred, decimals=0)[i].item() == 0:
-                    confusion_matrix['tn'] += 1
-                else:
-                    confusion_matrix['fn'] += 1
-            else:
-                if torch.round(pred, decimals=0)[i].item() == 1:
-                    confusion_matrix['tp'] += 1
-                else:
-                    confusion_matrix['fp'] += 1
+    # Concatenate all embeddings
+    all_embeddings = torch.cat(all_embeddings, dim=0)
+    return all_embeddings
 
-    return total_correct / total_examples, total_loss / total_examples
+# Generate the embeddings tensor
+author_embeddings = generate_author_embeddings(model, author_loader)
 
+# Ensure embeddings are in the correct order
+ordered_embeddings = author_embeddings.cpu().detach()
 
-# Main Training Loop
-training_loss_list = []
-validation_loss_list = []
-training_accuracy_list = []
-validation_accuracy_list = []
-confusion_matrix = {'tp': 0, 'fp': 0, 'fn': 0, 'tn': 0}
-best_val_loss = np.inf
-patience = 5
-counter = 0
-
-# Training Loop
-for epoch in range(1, 100):
-    train_acc, train_loss = train()
-    confusion_matrix = {'tp': 0, 'fp': 0, 'fn': 0, 'tn': 0}
-    val_acc, val_loss = test(val_loader)
-
-    # Save the model if validation loss improves
-    if val_loss < best_val_loss:
-        best_val_loss = val_loss
-        anp_save(model, PATH, epoch, train_loss, val_loss, val_acc)
-        counter = 0  # Reset the counter if validation loss improves
-    else:
-        counter += 1
-        if counter >= 5: 
-            lr_scheduler.step(val_loss)
-
-    # Early stopping check
-    if counter >= patience and epoch >= 20:
-        print(f'Early stopping at epoch {epoch}.')
-        break
-
-    training_loss_list.append(train_loss)
-    validation_loss_list.append(val_loss)
-    training_accuracy_list.append(train_acc)
-    validation_accuracy_list.append(val_acc)
-
-    # Print epoch results
-    print(f'Epoch: {epoch:02d}, Loss: {train_loss:.4f} - {val_loss:.4f}, Accuracy: {val_acc:.4f}')
-
-generate_graph(PATH, training_loss_list, validation_loss_list, training_accuracy_list, validation_accuracy_list,
-               confusion_matrix)
+# Check the shape of the tensor
+print(ordered_embeddings.shape)
+torch.save(ordered_embeddings, 'author_embeddings.pt')
+print(data['author'].num_nodes)

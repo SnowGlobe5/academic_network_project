@@ -191,10 +191,11 @@ def anp_simple_filter_data(data, root, folds, max_year):
   """
     subset_dict = {}
     authors_filter_list = []
-    for fold in folds:
-        df_auth = pd.read_csv(f"{root}/split/authors_{fold}.csv")
-        authors_filter_list.extend(df_auth.values.flatten())
-    subset_dict['author'] = torch.tensor(authors_filter_list)
+    if folds:
+        for fold in folds:
+            df_auth = pd.read_csv(f"{root}/split/authors_{fold}.csv")
+            authors_filter_list.extend(df_auth.values.flatten())
+        subset_dict['author'] = torch.tensor(authors_filter_list)
     mask = data['paper'].x[:, 0] <= max_year
     papers_list_year = torch.where(mask)
     subset_dict['paper'] = papers_list_year[0]

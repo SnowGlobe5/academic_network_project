@@ -6,6 +6,7 @@ from datetime import datetime
 
 import numpy as np
 import torch
+import random 
 import torch.nn.functional as F
 import torch_geometric.transforms as T
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -14,6 +15,15 @@ from torch_geometric.loader import NeighborLoader
 from torch_geometric.nn import HGTConv, Linear
 from torch_geometric.utils import coalesce
 from tqdm import tqdm
+
+# Set seed for reproducibility
+seed = 42  # Choose a fixed seed
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 # Constants
 BATCH_SIZE = 4096
@@ -102,50 +112,66 @@ coauthor_file = f"{ROOT}/processed/difference_author_edge{coauthor_year}.pt" if 
 # Use existing co-author edge if available, else generate
 if os.path.exists(coauthor_file):
     print("Co-author edge found!")
-    edge_index = torch.load(coauthor_file, map_location=DEVICE)["author"]
+    data['author', 'co_author', 'author'].edge_index = torch.load(coauthor_file, map_location=DEVICE)["author"]
+    data['author', 'co_author', 'author'].edge_label = None
 else:
     print("Generating co-author edge...")
     author_edge = coauthor_function(data, coauthor_year, DEVICE)
-    edge_index = author_edge["author"]
+    data['author', 'co_author', 'author'].edge_index = author_edge["author"]
+    data['author', 'co_author', 'author'].edge_label = None
     torch.save(author_edge, coauthor_file)
-
-count_file = f"{ROOT}/processed/difference_author_edge{coauthor_year}_count.pt" if only_new \
-    else f"{ROOT}/processed/author_edge{coauthor_year}_count.pt"
-
-# Use existing co-author edge if available, else generate
-if os.path.exists(count_file):
-    print("Co-author count found!")
-    data['author'].y = torch.load(count_file, map_location=DEVICE)
-else:
-    print("Generating co-author count...")
-    data['author'].y = torch.zeros(data['author'].num_nodes, dtype=torch.long)
-    # Count the number of co-author edges for each author
-    for author in range(data['author'].num_nodes):
-        count = len(edge_index[0][edge_index[0] == author])
-        data['author'].y[author] = count
-    torch.save(data['author'].y, count_file)
 
 # Convert paper features to float and make the graph undirected
 data['paper'].x = data['paper'].x.to(torch.float)
 data = T.ToUndirected()(data)
 data = data.to('cpu')
 
-sub_graph_train = anp_simple_filter_data(data, root=ROOT, folds=[0, 1, 2, 3], max_year=YEAR)
+# Add negative edge
+transform_data = T.RandomLinkSplit(
+    num_val=0,
+    num_test=0,
+    neg_sampling_ratio=1.0,
+    add_negative_train_samples=True,
+    edge_types=('author', 'co_author', 'author')
+)
+author_data, _, _ = transform_data(data)
+author_data['author', 'co_author', 'author'].edge_index = author_data['author', 'co_author', 'author'].edge_label_index
+del author_data['author', 'co_author', 'author'].edge_label_index
+
+train_data = anp_simple_filter_data(author_data, root=ROOT, folds=[0, 1, 2, 3], max_year=YEAR)
+val_data = anp_simple_filter_data(author_data, root=ROOT, folds=[4], max_year=YEAR)
+
+
+# Inizializza i data loader
 train_loader = NeighborLoader(
-    data=sub_graph_train,
-    num_neighbors=[edge_number, -1],
+    data=train_data,
+    num_neighbors=[50, 30],
+    input_nodes='author',
+    shuffle=True,
     batch_size=BATCH_SIZE,
-    input_nodes=('author')
 )
 
-sub_graph_val = anp_simple_filter_data(data, root=ROOT, folds=[4], max_year=YEAR)
 val_loader = NeighborLoader(
-    data=sub_graph_val,
-    num_neighbors=[edge_number, -1],
+    data=val_data,
+    num_neighbors=[50, 30],
+    input_nodes='author',
+    shuffle=True,
     batch_size=BATCH_SIZE,
-    input_nodes=('author')
 )
 
+author_loader = NeighborLoader(
+    data=author_data,
+    num_neighbors=[50, 30],
+    input_nodes='author',
+    shuffle=True,
+    batch_size=BATCH_SIZE,
+)
+
+# Delete the co-author edge (data will be used for data.metadata())
+del data['author', 'co_author', 'author']
+
+
+# Define model components
 class GNNEncoder(torch.nn.Module):
     def __init__(self, hidden_channels, out_channels, num_heads, num_layers, metadata):
         super().__init__()
@@ -157,8 +183,11 @@ class GNNEncoder(torch.nn.Module):
 
         self.convs = torch.nn.ModuleList()
         for _ in range(num_layers):
-            conv = HGTConv(hidden_channels, hidden_channels, metadata)
+            conv = HGTConv(hidden_channels, hidden_channels, metadata,
+                            num_heads)
             self.convs.append(conv)
+
+        # self.lin = Linear(hidden_channels, out_channels)
 
     def forward(self, x_dict, edge_index_dict):
         x_dict = {
@@ -171,92 +200,111 @@ class GNNEncoder(torch.nn.Module):
 
         return x_dict
 
-class CoauthorCountDecoder(torch.nn.Module):
+class EdgeDecoder(torch.nn.Module):
     def __init__(self, hidden_channels):
         super().__init__()
-        self.lin1 = Linear(hidden_channels, hidden_channels)
-        self.lin2 = Linear(hidden_channels, 2)
+        self.lin1 = Linear(2 * hidden_channels, hidden_channels)
+        self.lin2 = Linear(hidden_channels, 1)
+    def forward(self, z_dict, edge_label_index):
+        row, col = edge_label_index
+        z = torch.cat([z_dict['author'][row], z_dict['author'][col]], dim=-1)
 
-    def forward(self, z):
         z = self.lin1(z).relu()
         z = self.lin2(z)
-        mean_pred, log_dispersion = z[:, 0], z[:, 1]
-        mean_pred = torch.nn.functional.softplus(mean_pred)  # Ensure mean is positive
-        dispersion_pred = torch.nn.functional.softplus(log_dispersion)  # Ensure dispersion is positive
-        return mean_pred, dispersion_pred
+        return z.view(-1)
+
 
 class Model(torch.nn.Module):
     def __init__(self, hidden_channels):
         super().__init__()
-        self.encoder = GNNEncoder(hidden_channels, hidden_channels, 2, 2, data.metadata())
-        self.decoder = CoauthorCountDecoder(hidden_channels)
+        self.encoder = GNNEncoder(hidden_channels, hidden_channels, 1, 2, data.metadata())
+        # self.encoder = to_hetero(self.encoder, data.metadata(), aggr='sum')
+        self.decoder = EdgeDecoder(hidden_channels)
         self.embedding_author = torch.nn.Embedding(data["author"].num_nodes, 32)
         self.embedding_topic = torch.nn.Embedding(data["topic"].num_nodes, 32)
 
-    def forward(self, x_dict, edge_index_dict, input_nodes):
+    def forward(self, x_dict, edge_index_dict, edge_label_index):
         z_dict = self.encoder(x_dict, edge_index_dict)
-        input_node_embeddings = z_dict['author'][input_nodes]
-        return self.decoder(input_node_embeddings)
+        return self.decoder(z_dict, edge_label_index)
+
 
 # Initialize model, optimizer, and embeddings
-model = Model(hidden_channels=64).to(DEVICE)
-# torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+model = Model(hidden_channels=32).to(DEVICE)
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 lr_scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
 
-# Negative Binomial Loss Function
-def negative_binomial_loss(predicted_mean, predicted_dispersion, true_counts):
-    predicted_mean = torch.clamp(predicted_mean, min=1e-6)  # Prevent log(0)
-    predicted_dispersion = torch.clamp(predicted_dispersion, min=1e-6)  # Prevent log(0)
-    term1 = torch.lgamma(true_counts + predicted_dispersion) - torch.lgamma(predicted_dispersion) - torch.lgamma(true_counts + 1)
-    term2 = predicted_dispersion * (torch.log(predicted_dispersion) - torch.log(predicted_dispersion + predicted_mean))
-    term3 = true_counts * (torch.log(predicted_mean) - torch.log(predicted_dispersion + predicted_mean))
-    return -(term1 + term2 + term3).mean()
 
 # Training and Testing Functions
 def train():
     model.train()
-    total_examples = total_loss = 0
-    for batch in tqdm(train_loader):
+    total_examples = total_correct = total_loss = 0
+    for i, batch in enumerate(tqdm(train_loader)):
         batch = batch.to(DEVICE)
-        target = batch['author'].y[0:BATCH_SIZE].float() # Number of co-authors
-        
+
+        edge_label_index = batch['author', 'author'].edge_index
+        edge_label = batch['author', 'author'].edge_label
+        del batch['author', 'co_author', 'author']
+
         # Add node embeddings for message passing
         batch['author'].x = model.embedding_author(batch['author'].n_id)
         batch['topic'].x = model.embedding_topic(batch['topic'].n_id)
 
         optimizer.zero_grad()
-        pred = model(batch.x_dict, batch.edge_index_dict, range(BATCH_SIZE))
-        mean_pred, dispersion_pred = pred
-        loss = negative_binomial_loss(mean_pred, dispersion_pred, target)
+        pred = model(batch.x_dict, batch.edge_index_dict, edge_label_index)
+        target = edge_label
+        loss = F.binary_cross_entropy_with_logits(pred, target)
         loss.backward()
         optimizer.step()
 
-        total_loss += float(loss) * BATCH_SIZE
-        total_examples += BATCH_SIZE
+        total_loss += float(loss) * pred.numel()
+        total_examples += pred.numel()
 
-    return total_loss / total_examples
+        # Calculate accuracy
+        pred = pred.clamp(min=0, max=1)
+        total_correct += int((torch.round(pred, decimals=0) == target).sum())
+
+    return total_correct / total_examples, total_loss / total_examples
+
 
 @torch.no_grad()
 def test(loader):
     model.eval()
-    total_examples = total_loss = 0
-    for batch in tqdm(loader):
+    total_examples = total_correct = total_loss = 0
+    for i, batch in enumerate(tqdm(loader)):
         batch = batch.to(DEVICE)
-        target = batch['author'].y[0:BATCH_SIZE].float() # Number of co-authors
-        
+        edge_label_index = batch['author', 'author'].edge_index
+        edge_label = batch['author', 'author'].edge_label
+        del batch['author', 'co_author', 'author']
+
         # Add node embeddings for message passing
         batch['author'].x = model.embedding_author(batch['author'].n_id)
         batch['topic'].x = model.embedding_topic(batch['topic'].n_id)
 
-        pred = model(batch.x_dict, batch.edge_index_dict, range(BATCH_SIZE))
-        mean_pred, dispersion_pred = pred
-        loss = negative_binomial_loss(mean_pred, dispersion_pred, target)
+        pred = model(batch.x_dict, batch.edge_index_dict, edge_label_index)
+        target = edge_label
+        loss = F.binary_cross_entropy_with_logits(pred, target)
 
-        total_loss += float(loss) * BATCH_SIZE
-        total_examples += BATCH_SIZE
+        total_loss += float(loss) * pred.numel()
+        total_examples += pred.numel()
 
-    return total_loss / total_examples
+        # Calculate accuracy
+        pred = pred.clamp(min=0, max=1)
+        total_correct += int((torch.round(pred, decimals=0) == target).sum())
+
+        # Confusion matrix
+        for i in range(len(target)):
+            if target[i].item() == 0:
+                if torch.round(pred, decimals=0)[i].item() == 0:
+                    confusion_matrix['tn'] += 1
+                else:
+                    confusion_matrix['fn'] += 1
+            else:
+                if torch.round(pred, decimals=0)[i].item() == 1:
+                    confusion_matrix['tp'] += 1
+                else:
+                    confusion_matrix['fp'] += 1
+
+    return total_correct / total_examples, total_loss / total_examples
 
 
 # Main Training Loop
@@ -264,20 +312,21 @@ training_loss_list = []
 validation_loss_list = []
 training_accuracy_list = []
 validation_accuracy_list = []
+confusion_matrix = {'tp': 0, 'fp': 0, 'fn': 0, 'tn': 0}
 best_val_loss = np.inf
-patience = 3
+patience = 5
 counter = 0
 
 # Training Loop
 for epoch in range(1, 100):
-    train_loss = train()
+    train_acc, train_loss = train()
     confusion_matrix = {'tp': 0, 'fp': 0, 'fn': 0, 'tn': 0}
-    val_loss = test(val_loader)
+    val_acc, val_loss = test(val_loader)
 
     # Save the model if validation loss improves
     if val_loss < best_val_loss:
         best_val_loss = val_loss
-        anp_save(model, PATH, epoch, train_loss, val_loss, 0)
+        anp_save(model, PATH, epoch, train_loss, val_loss, val_acc)
         counter = 0  # Reset the counter if validation loss improves
     else:
         counter += 1
@@ -285,15 +334,17 @@ for epoch in range(1, 100):
             lr_scheduler.step(val_loss)
 
     # Early stopping check
-    if counter >= patience and epoch >= 5:
+    if counter >= patience and epoch >= 20:
         print(f'Early stopping at epoch {epoch}.')
         break
 
     training_loss_list.append(train_loss)
     validation_loss_list.append(val_loss)
+    training_accuracy_list.append(train_acc)
+    validation_accuracy_list.append(val_acc)
 
     # Print epoch results
-    print(f'Epoch: {epoch:02d}, Loss: {train_loss:.4f} - {val_loss:.4f}')
+    print(f'Epoch: {epoch:02d}, Loss: {train_loss:.4f} - {val_loss:.4f}, Accuracy: {val_acc:.4f}')
 
 generate_graph(PATH, training_loss_list, validation_loss_list, training_accuracy_list, validation_accuracy_list,
                confusion_matrix)
