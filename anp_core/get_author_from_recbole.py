@@ -19,8 +19,7 @@ import time
 # Constants
 BATCH_SIZE = 4096
 YEAR = 2019
-NUM_PAPER= 2
-NUM_TOPIC = 5
+TYPE = "10_NAIS"
 ROOT = "../anp_data"
 DEVICE = torch.device(f'cuda:{int(sys.argv[2])}' if torch.cuda.is_available() else 'cpu')
 from academic_network_project.anp_core.anp_dataset import ANPDataset
@@ -39,10 +38,9 @@ path = f'../anp_data/processed/co_author_edge{YEAR}_history.pt'
 co_author_edges_history = torch.load(path).to(DEVICE)
 
 # Carica i paper popolari fino al YEAR
-author_top_paper_topic_path = f"../anp_data/processed/edge_infosphere_3_{NUM_TOPIC}_{NUM_PAPER}.pt"
-author_top_paper_topic = torch.load(author_top_paper_topic_path).to(DEVICE)
+author_recbole_path = f"../anp_data/processed/rec_edge_{TYPE}.pt"
+author_recbole = torch.load(author_recbole_path).to(DEVICE)
 
-# Get mask of connections in `writes` involving popular papers
 writes_edges = data['author', 'writes', 'paper'].edge_index.to(DEVICE)
 
 # Carica il CSV in un DataFrame
@@ -76,19 +74,24 @@ for k, author in enumerate(range(data["author"].num_nodes)):
         list_co_author_edges.append([])
         continue
     
-    mask_popular_papers_recommended = torch.isin(author_top_paper_topic[0], author)
-    popular_papers = author_top_paper_topic[:, mask_popular_papers_recommended][1]
+    mask_papers_recommended = torch.isin(author_recbole[0], author)
+    recommended_papers = author_recbole[:, mask_papers_recommended][1]
+    
+    if recommended_papers.size() == torch.Size([0]):
+        list_co_author_edges.append([])
+        continue
     
     writes_edges = data['author', 'writes', 'paper'].edge_index.to(DEVICE)
-    mask_popular_papers = torch.isin(writes_edges[1], popular_papers)
-    author_popular_papers = writes_edges[:, mask_popular_papers][0]
+    mask_recommended_papers = torch.isin(writes_edges[1], recommended_papers)
+    author_recommended_papers = writes_edges[:, mask_recommended_papers][0]
+    # print(author_recommended_papers.size())
 
-    # Ottieni co-autori già presenti nella sua history
+    # # Ottieni co-autori già presenti nella sua history
     # mask_co_authors = torch.isin(co_author_edges_history[0], author)
     # author_history_tensor = co_author_edges_history[:, mask_co_authors][1]
     
-    # combined_tensor = torch.cat((author_popular_papers, author_history_tensor), dim=0)
-    unique_authors_tensor = torch.unique(author_popular_papers, dim=0)
+    # combined_tensor = torch.cat((author_recommended_papers, author_history_tensor), dim=0)
+    unique_authors_tensor = torch.unique(author_recommended_papers, dim=0)
     
     # Ottieni i co-autori dei co-autori
     mask_co_authors = torch.isin(co_author_edges_history[0], unique_authors_tensor)
@@ -102,7 +105,7 @@ for k, author in enumerate(range(data["author"].num_nodes)):
     list_co_author_edges.append(filtered_authors_tensor)
 
 # Salva l'insieme finale su disco come 'co_author_top_paper_NUM.json'
-output_path = f"../anp_data/processed/co_author_infosphere/co_author_3_{NUM_TOPIC}_{NUM_PAPER}_{YEAR}.pt"
+output_path = f"../anp_data/processed/co_author_infosphere/co_author_{TYPE}_{YEAR}.pt"
 
 # Salva il tensore in un file .pt
 torch.save(list_co_author_edges, output_path)

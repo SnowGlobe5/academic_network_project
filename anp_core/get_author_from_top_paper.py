@@ -18,7 +18,7 @@ from tqdm import tqdm
 # Constants
 BATCH_SIZE = 4096
 YEAR = 2019
-NUM = 10
+NUM = 50
 ROOT = "../anp_data"
 DEVICE = torch.device(f'cuda:1' if torch.cuda.is_available() else 'cpu')
 from academic_network_project.anp_core.anp_dataset import ANPDataset
@@ -50,30 +50,19 @@ popular_papers_tensor = torch.tensor(list(popular_papers), device=DEVICE)
 
 # Get mask of connections in `writes` involving popular papers
 writes_edges = data['author', 'writes', 'paper'].edge_index.to(DEVICE)
-mask_popular_papers = torch.isin(writes_edges[0], popular_papers_tensor)
-author_popular_papers = writes_edges[1, mask_popular_papers]
+mask_popular_papers = torch.isin(writes_edges[1], popular_papers_tensor)
+author_popular_papers = writes_edges[:, mask_popular_papers][0]
 
-# Get authors connected to the authors of popular papers in `co_author_edges_history`
+ # Ottieni i co-autori dei co-autori
 mask_co_authors = torch.isin(co_author_edges_history[0], author_popular_papers)
-co_author_authors_popular_papers = co_author_edges_history[:, mask_co_authors]
+co_author_authors = co_author_edges_history[:, mask_co_authors][1]
 
-# Converti gli autori in insiemi e rimuovi duplicati
-author_popular_papers_set = set(author_popular_papers.cpu().numpy().flatten())
-co_author_authors_popular_papers_set = set(co_author_authors_popular_papers.cpu().numpy().flatten())
-
-# Stampa la lunghezza di ciascun insieme
-print(f"Number of unique authors of popular papers: {len(author_popular_papers_set)}")
-print(f"Number of unique co-authors of authors of popular papers: {len(co_author_authors_popular_papers_set)}")
-
-# Unisci i due insiemi e rimuovi duplicati
-final_authors_set = author_popular_papers_set | co_author_authors_popular_papers_set
-print(f"Total unique authors in combined set: {len(final_authors_set)}")
-
-final_authors_list = list(map(int, final_authors_set))
+combined_tensor = torch.cat((author_popular_papers, co_author_authors), dim=0)
+unique_authors_tensor_final = torch.unique(combined_tensor, dim=0)
 
 # Salva l'insieme finale su disco come 'co_author_top_paper_NUM.json'
-output_path = f"../anp_data/processed/co_author_top_paper_{NUM}_{YEAR}.json"
-with open(output_path, "w") as f:
-    json.dump(final_authors_list, f)
+output_path = f"../anp_data/processed/co_author_infosphere/co_author_2_{NUM}_{YEAR}.pt"
 
-print(f"Combined set saved to {output_path}")
+# Salva il tensore in un file .pt
+torch.save(unique_authors_tensor_final, output_path)
+

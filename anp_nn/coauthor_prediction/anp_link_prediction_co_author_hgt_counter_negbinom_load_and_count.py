@@ -17,8 +17,8 @@ from torch_geometric.utils import coalesce
 from tqdm import tqdm
 
 # Constants
-infosphere_type = 3
-infosphere_parameters = "[5,10]"
+infosphere_type = 4
+infosphere_parameters = 1
 only_new = False
 edge_number = 50
 drop_percentage = 0.0
@@ -30,7 +30,7 @@ from academic_network_project.anp_core.anp_dataset import ANPDataset
 from academic_network_project.anp_core.anp_utils import *
 
 # Path to the pre-trained model
-model_path = '../anp_models/anp_link_prediction_co_author_hgt_counter_negbinom_1_5_False_-1_0.0_2024_10_27_14_35_46/model.pt'
+model_path = '../anp_models_2_11/anp_link_prediction_co_author_hgt_counter_negbinom_1_5_False_-1_0.0_2024_10_27_14_35_46/model.pt'
 
 
 # Create ANP dataset
@@ -79,6 +79,24 @@ if infosphere_type != 0:
             infosphere_edge = create_infosphere_top_papers_per_topic_edge_index(data, arg_list[0], arg_list[1], YEAR)
             data['author', 'infosphere_writes', 'paper'].edge_index = coalesce(infosphere_edge)
             data['author', 'infosphere_writes', 'paper'].edge_label = None
+    
+    elif infosphere_type == 4:
+        if os.path.exists(f"{ROOT}/processed/rec_edge_5_NAIS.pt"):
+            print("Rec edge found!")
+            data['author', 'infosphere_writes', 'paper'].edge_index = torch.load(f"{ROOT}/processed/rec_edge_10_NAIS.pt", map_location=DEVICE)
+            data['author', 'infosphere_writes', 'paper'].edge_label = None
+        else:
+            print("Error: Rec edge not found!")
+            exit()
+    
+    elif infosphere_type == 5:
+        if os.path.exists(f"{ROOT}/processed/rec_edge_10_LightGCN.pt"):
+            print("Rec edge found!")
+            data['author', 'infosphere_writes', 'paper'].edge_index = torch.load(f"{ROOT}/processed/rec_edge_10_LightGCN.pt", map_location=DEVICE)
+            data['author', 'infosphere_writes', 'paper'].edge_label = None
+        else:
+            print("Error: Rec edge not found!")
+            exit()
 
 
 # Try to predict all the future co-author or just the new one (not present in history)
