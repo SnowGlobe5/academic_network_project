@@ -12,7 +12,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 base_folder = "/home/sabrina/academic_network_project/anp_models"
 
 date_lower = "2024_04_24"
-date_upper = "2024_10_16"
+date_upper = "2024_11_16"
 lr_lower = 0.00001
 lr_upper = 0.00001
 

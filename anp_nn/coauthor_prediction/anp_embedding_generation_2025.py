@@ -93,30 +93,23 @@ if infosphere_type != 0:
         data['author', 'infosphere', 'paper'].edge_index = coalesce(infosphere_edge)
         data['author', 'infosphere', 'paper'].edge_label = None
 
-    elif infosphere_type == 4:
-        if os.path.exists(f"{ROOT}/processed/rec_edge_10_NAIS.pt"):
-            print("Rec edge found!")
-            data['author', 'infosphere_writes', 'paper'].edge_index = torch.load(f"{ROOT}/processed/rec_edge_10_NAIS.pt", map_location=DEVICE)
-            data['author', 'infosphere_writes', 'paper'].edge_label = None
-        else:
-            print("Error: Rec edge not found!")
-            exit()
-    
-    elif infosphere_type == 5:
-        if os.path.exists(f"{ROOT}/processed/rec_edge_10_LightGCN.pt"):
-            print("Rec edge found!")
-            data['author', 'infosphere_writes', 'paper'].edge_index = torch.load(f"{ROOT}/processed/rec_edge_10_LightGCN.pt", map_location=DEVICE)
-            data['author', 'infosphere_writes', 'paper'].edge_label = None
-        else:
-            print("Error: Rec edge not found!")
-            exit()
-
 # Try to predict all the future co-author or just the new one (not present in history)
-coauthor_file = f"{ROOT}/processed/gt_edge_index_4_1_2019.pt" 
-print("Co-author edge found!")
-data['author', 'co_author', 'author'].edge_index = torch.load(coauthor_file, map_location=DEVICE)
-data['author', 'co_author', 'author'].edge_label = None
+coauthor_function = get_difference_author_edge_year if only_new else get_author_edge_year
+coauthor_year = YEAR if only_new else YEAR + 1
+coauthor_file = f"{ROOT}/processed/difference_author_edge{coauthor_year}.pt" if only_new \
+    else f"{ROOT}/processed/author_edge{coauthor_year}.pt"
 
+# Use existing co-author edge if available, else generate
+if os.path.exists(coauthor_file):
+    print("Co-author edge found!")
+    data['author', 'co_author', 'author'].edge_index = torch.load(coauthor_file, map_location=DEVICE)["author"]
+    data['author', 'co_author', 'author'].edge_label = None
+else:
+    print("Generating co-author edge...")
+    author_edge = coauthor_function(data, coauthor_year, DEVICE)
+    data['author', 'co_author', 'author'].edge_index = author_edge["author"]
+    data['author', 'co_author', 'author'].edge_label = None
+    torch.save(author_edge, coauthor_file)
 
 # Convert paper features to float and make the graph undirected
 data['paper'].x = data['paper'].x.to(torch.float)
@@ -150,7 +143,7 @@ edge_label_index = train_data['author', 'co_author', 'author'].edge_label_index
 edge_label = train_data['author', 'co_author', 'author'].edge_label
 train_loader = LinkNeighborLoader(
     data=train_data,
-    num_neighbors=[edge_number, 50],
+    num_neighbors=[edge_number, 30],
     # neg_sampling_ratio=2.0,
     edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
     edge_label=edge_label,
@@ -162,7 +155,7 @@ edge_label_index = val_data['author', 'co_author', 'author'].edge_label_index
 edge_label = val_data['author', 'co_author', 'author'].edge_label
 val_loader = LinkNeighborLoader(
     data=val_data,
-    num_neighbors=[edge_number, 50],
+    num_neighbors=[edge_number, 30],
     edge_label_index=(('author', 'co_author', 'author'), edge_label_index),
     edge_label=edge_label,
     batch_size=1024,
@@ -263,7 +256,6 @@ def train():
         # Calculate accuracy
         pred = pred.clamp(min=0, max=1)
         total_correct += int((torch.round(pred, decimals=0) == target).sum())
-
     return total_correct / total_examples, total_loss / total_examples
 
 
@@ -304,7 +296,6 @@ def test(loader):
                     confusion_matrix['tp'] += 1
                 else:
                     confusion_matrix['fp'] += 1
-
     return total_correct / total_examples, total_loss / total_examples
 
 
@@ -349,3 +340,30 @@ for epoch in range(1, 100):
 
 generate_graph(PATH, training_loss_list, validation_loss_list, training_accuracy_list, validation_accuracy_list,
                confusion_matrix)
+
+
+# Salvataggio del modello dopo l'addestramento
+anp_save(model, PATH, epoch, train_loss, val_loss, val_acc)
+
+
+# Iterare su tutti gli autori per salvare il loro output dall'encoder
+author_embeddings = {}
+model.eval()
+
+          
+DEVICE = "cpu"
+data = data.to(DEVICE)
+model.to("cpu")
+author_nodes = torch.arange(data['author'].num_nodes, device=DEVICE).to(DEVICE)
+with torch.no_grad():
+    data['author'].x = model.embedding_author(author_nodes).to(DEVICE)  # Aggiungere embedding autore
+    data['topic'].x = model.embedding_topic(torch.arange(data['topic'].num_nodes, device=DEVICE)).to(DEVICE)
+    
+    z_dict = model.encoder(data.x_dict, data.edge_index_dict)
+    author_embeddings = z_dict['author'].cpu().numpy()
+    
+# Salvataggio delle embedding
+author_embeddings_path = os.path.join(PATH, "author_embeddings.npy")
+np.save(author_embeddings_path, author_embeddings)
+
+print(f"Author embeddings salvate in {author_embeddings_path}")

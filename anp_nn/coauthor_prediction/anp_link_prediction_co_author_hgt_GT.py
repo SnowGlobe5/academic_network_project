@@ -112,7 +112,7 @@ if infosphere_type != 0:
             exit()
             
 # Try to predict all the future co-author or just the new one (not present in history)
-coauthor_file = f"{ROOT}/processed/gt_edge_index_1_5_2019.pt" 
+coauthor_file = f"{ROOT}/processed/gt_edge_index_1_5_2019_new.pt" 
 print("Co-author edge found!")
 data['author', 'co_author', 'author'].edge_index = torch.load(coauthor_file, map_location=DEVICE)
 data['author', 'co_author', 'author'].edge_label = None
@@ -213,7 +213,7 @@ class EdgeDecoder(torch.nn.Module):
 
         z = self.lin1(z).relu()
         z = self.lin2(z)
-        return z.view(-1)
+        return torch.sigmoid(z).view(-1)
 
 
 class Model(torch.nn.Module):
@@ -261,7 +261,6 @@ def train():
         total_examples += pred.numel()
 
         # Calculate accuracy
-        pred = pred.clamp(min=0, max=1)
         total_correct += int((torch.round(pred, decimals=0) == target).sum())
 
     return total_correct / total_examples, total_loss / total_examples
@@ -289,7 +288,6 @@ def test(loader):
         total_examples += pred.numel()
 
         # Calculate accuracy
-        pred = pred.clamp(min=0, max=1)
         total_correct += int((torch.round(pred, decimals=0) == target).sum())
 
         # Confusion matrix

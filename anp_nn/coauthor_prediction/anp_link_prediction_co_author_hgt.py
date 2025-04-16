@@ -206,7 +206,7 @@ class EdgeDecoder(torch.nn.Module):
 
         z = self.lin1(z).relu()
         z = self.lin2(z)
-        return z.view(-1)
+        return torch.sigmoid(z).view(-1)
 
 
 class Model(torch.nn.Module):
@@ -254,7 +254,6 @@ def train():
         total_examples += pred.numel()
 
         # Calculate accuracy
-        pred = pred.clamp(min=0, max=1)
         total_correct += int((torch.round(pred, decimals=0) == target).sum())
 
     return total_correct / total_examples, total_loss / total_examples
@@ -282,7 +281,6 @@ def test(loader):
         total_examples += pred.numel()
 
         # Calculate accuracy
-        pred = pred.clamp(min=0, max=1)
         total_correct += int((torch.round(pred, decimals=0) == target).sum())
 
         # Confusion matrix
