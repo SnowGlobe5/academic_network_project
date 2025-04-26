@@ -8,8 +8,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch_geometric.transforms as T
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.nn import Linear
+from torch.optim.lr_scheduler import OneCycleLR
+from torch.nn import Linear, Dropout, BatchNorm1d
 from torch_geometric.loader import LinkNeighborLoader
 from torch_geometric.nn import HGTConv, Linear
 from torch_geometric.utils import coalesce
@@ -33,7 +33,7 @@ drop_percentage = float(sys.argv[6])
 GT_infosphere_type = int(sys.argv[8])
 GT_infosphere_parameters = sys.argv[9]
 
-# Current timestamp for model saving
+# Setup path and save config
 current_date = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
 PATH = f"../anp_models/{os.path.basename(sys.argv[0][:-3])}_{infosphere_type}_{infosphere_parameters}_{only_new}_{edge_number}_{drop_percentage}_{current_date}/"
 os.makedirs(PATH)
@@ -180,50 +180,45 @@ del data['author', 'co_author', 'author']
 class GNNEncoder(torch.nn.Module):
     def __init__(self, hidden_channels, out_channels, num_heads, num_layers, metadata):
         super().__init__()
-
-        self.hidden_channels = hidden_channels
-        self.lin_dict = torch.nn.ModuleDict()
-        for node_type in data.node_types:
-            self.lin_dict[node_type] = Linear(-1, hidden_channels)
-
+        self.lin_dict = torch.nn.ModuleDict({
+            node_type: Linear(-1, hidden_channels)
+            for node_type in data.node_types
+        })
         self.convs = torch.nn.ModuleList()
+        self.norms = torch.nn.ModuleList()
         for _ in range(num_layers):
-            conv = HGTConv(hidden_channels, hidden_channels, metadata,
-                            num_heads)
-            self.convs.append(conv)
-
-        # self.lin = Linear(hidden_channels, out_channels)
+            self.convs.append(HGTConv(hidden_channels, hidden_channels, metadata, num_heads))
+            self.norms.append(BatchNorm1d(hidden_channels))
 
     def forward(self, x_dict, edge_index_dict):
         x_dict = {
             node_type: self.lin_dict[node_type](x).relu_()
             for node_type, x in x_dict.items()
         }
-
-        for conv in self.convs:
+        for i, conv in enumerate(self.convs):
             x_dict = conv(x_dict, edge_index_dict)
-
+            x_dict = {k: self.norms[i](v) for k, v in x_dict.items()}
+            x_dict = {k: F.dropout(v, p=0.3, training=self.training) for k, v in x_dict.items()}
         return x_dict
 
 class EdgeDecoder(torch.nn.Module):
     def __init__(self, hidden_channels):
         super().__init__()
         self.lin1 = Linear(2 * hidden_channels, hidden_channels)
+        self.dropout = Dropout(p=0.3)
         self.lin2 = Linear(hidden_channels, 1)
+
     def forward(self, z_dict, edge_label_index):
         row, col = edge_label_index
         z = torch.cat([z_dict['author'][row], z_dict['author'][col]], dim=-1)
-
-        z = self.lin1(z).relu()
+        z = self.dropout(self.lin1(z).relu())
         z = self.lin2(z)
         return z.view(-1)
-
 
 class Model(torch.nn.Module):
     def __init__(self, hidden_channels):
         super().__init__()
         self.encoder = GNNEncoder(hidden_channels, hidden_channels, 1, 2, data.metadata())
-        # self.encoder = to_hetero(self.encoder, data.metadata(), aggr='sum')
         self.decoder = EdgeDecoder(hidden_channels)
         self.embedding_author = torch.nn.Embedding(data["author"].num_nodes, 32)
         self.embedding_topic = torch.nn.Embedding(data["topic"].num_nodes, 32)
@@ -232,24 +227,21 @@ class Model(torch.nn.Module):
         z_dict = self.encoder(x_dict, edge_index_dict)
         return self.decoder(z_dict, edge_label_index)
 
-
-# Initialize model, optimizer, and embeddings
 model = Model(hidden_channels=32).to(DEVICE)
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-lr_scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
+lr_scheduler = OneCycleLR(optimizer, max_lr=learning_rate, steps_per_epoch=len(train_loader), epochs=100, pct_start=0.1, anneal_strategy='cos')
 
+# Training function
 
-# Training and Testing Functions
 def train():
     model.train()
     total_examples = total_correct = total_loss = 0
-    for i, batch in enumerate(tqdm(train_loader)):
+    for batch in tqdm(train_loader):
         batch = batch.to(DEVICE)
         edge_label_index = batch['author', 'author'].edge_label_index
         edge_label = batch['author', 'author'].edge_label
         del batch['author', 'co_author', 'author']
 
-        # Add node embeddings for message passing
         batch['author'].x = model.embedding_author(batch['author'].n_id)
         batch['topic'].x = model.embedding_topic(batch['topic'].n_id)
 
@@ -258,29 +250,30 @@ def train():
         target = edge_label
         loss = F.binary_cross_entropy_with_logits(pred, target)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=2.0)
         optimizer.step()
+        lr_scheduler.step()
 
         total_loss += float(loss) * pred.numel()
         total_examples += pred.numel()
 
-        # Calculate accuracy
-        pred = pred.clamp(min=0, max=1)
-        total_correct += int((torch.round(pred, decimals=0) == target).sum())
+        pred = torch.sigmoid(pred)
+        total_correct += int((torch.round(pred) == target).sum())
 
     return total_correct / total_examples, total_loss / total_examples
 
+# Test function
 
 @torch.no_grad()
 def test(loader):
     model.eval()
     total_examples = total_correct = total_loss = 0
-    for i, batch in enumerate(tqdm(loader)):
+    for batch in tqdm(loader):
         batch = batch.to(DEVICE)
         edge_label_index = batch['author', 'author'].edge_label_index
         edge_label = batch['author', 'author'].edge_label
         del batch['author', 'co_author', 'author']
 
-        # Add node embeddings for message passing
         batch['author'].x = model.embedding_author(batch['author'].n_id)
         batch['topic'].x = model.embedding_topic(batch['topic'].n_id)
 
@@ -291,9 +284,9 @@ def test(loader):
         total_loss += float(loss) * pred.numel()
         total_examples += pred.numel()
 
-        # Calculate accuracy
-        pred = pred.clamp(min=0, max=1)
-        total_correct += int((torch.round(pred, decimals=0) == target).sum())
+        pred = torch.sigmoid(pred)
+        total_correct += int((torch.round(pred) == target).sum())
+
 
         # Confusion matrix
         for i in range(len(target)):

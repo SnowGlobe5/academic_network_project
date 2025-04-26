@@ -26,7 +26,7 @@ YEAR = 2019
 
 infosphere_type = int(sys.argv[1])
 infosphere_parameters = sys.argv[2]
-only_new = sys.argv[3].lower() == 'true'
+only_new = False
 
 # Set the random seed for reproducibility
 seed = 42
@@ -36,11 +36,15 @@ np.random.seed(seed)
 
 
 ROOT = "../anp_data"
-DEVICE = torch.device(f'cuda:0' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device(f'cuda:1' if torch.cuda.is_available() else 'cpu')
 if not only_new:
-    author_embeddings_path = f'../anp_models/anp_embedding_generation_2025_1_5_False_-1_0.0_2025_04_15_18_25_52/author_embeddings.npy'
+    if infosphere_type == 1:
+        author_embeddings_path = f'../anp_models/anp_embedding_generation_2025_1_5_False_-1_0.0_2025_04_15_18_25_52/author_embeddings.npy'
+    else:
+        author_embeddings_path = f'../anp_models/anp_embedding_generation_2025_1_5_False_-1_0.0_2025_04_15_18_25_52/author_embeddings_{infosphere_type}_{infosphere_parameters}.npy'
 else:
-    author_embeddings_path = f'../anp_models/anp_embedding_generation_2025_1_5_True_-1_0.0_2025_04_15_09_01_32/author_embeddings_new.npy'
+    author_embeddings_path = f'../anp_models/anp_embedding_generation_2025_1_5_True_-1_0.0_2025_04_15_09_01_32/author_embeddings.npy'
+print(f"Loading author embeddings from {author_embeddings_path}...")
 author_embeddings = np.load(author_embeddings_path)
 author_embeddings_tensor = torch.tensor(author_embeddings, dtype=torch.float32)
 author_embeddings_dict = { "author": author_embeddings_tensor.to(DEVICE) }
@@ -52,20 +56,13 @@ max_author_degrees = torch.load(author_edge_counts_path).to(DEVICE)
 co_author_infosphere_path = f'../anp_data/processed/co_author_infosphere/co_author_{infosphere_type}_{infosphere_parameters}_{YEAR}.pt'
 if infosphere_type == 1:
     co_author_candidates = torch.load(co_author_infosphere_path, map_location=lambda storage, loc: storage)
-elif infosphere_type == 2:
+else:
     co_author_candidates_top = torch.load(co_author_infosphere_path, map_location=lambda storage, loc: storage)
-
-    co_author_history_path = f'../anp_data/processed/co_author_infosphere/co_author_history_{YEAR}.pt'
-    co_author_candidates_history = torch.load(co_author_history_path, map_location=lambda storage, loc: storage)
-
-elif infosphere_type == 3:
-    co_author_candidates_top = torch.load(co_author_infosphere_path, map_location=lambda storage, loc: storage)
-
     co_author_history_path = f'../anp_data/processed/co_author_infosphere/co_author_history_{YEAR}.pt'
     co_author_candidates_history = torch.load(co_author_history_path, map_location=lambda storage, loc: storage)
 
 
-DEVICE = torch.device(f'cuda:0' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device(f'cuda:1' if torch.cuda.is_available() else 'cpu')
 
 from academic_network_project.anp_core.anp_dataset import ANPDataset
 from academic_network_project.anp_core.anp_utils import *
@@ -165,7 +162,7 @@ elif infosphere_type == 2:
     authors_df = pd.read_csv("../anp_data/processed/relevant_authors_2020.csv")
     # Converte la colonna 'author_id' in una lista
     filtered_authors = authors_df['author_id'].tolist()
-elif infosphere_type == 3:
+else:
     filtered_authors = [
     author_node for author_node in range(num_authors)
     if max_author_degrees[author_node] != 0 
@@ -190,10 +187,10 @@ for j, author_node in enumerate(filtered_authors):
         # Otteniamo i candidati di co-autori per l'autore corrente
         coauthor_candidates = co_author_candidates[author_node].to(DEVICE)
     elif infosphere_type == 2:
-        combined_tensor = torch.cat((co_author_candidates_history[author_node], co_author_candidates_top), dim=0)
+        combined_tensor = torch.cat((co_author_candidates_top, co_author_candidates_history[author_node]), dim=0)
         coauthor_candidates = torch.unique(combined_tensor, dim=0).to(DEVICE)
-    elif infosphere_type == 3:
-        combined_tensor = torch.cat((co_author_candidates_history[author_node], co_author_candidates_top[author_node]), dim=0)
+    else:
+        combined_tensor = torch.cat((co_author_candidates_top[author_node], co_author_candidates_history[author_node]), dim=0)
         coauthor_candidates = torch.unique(combined_tensor, dim=0).to(DEVICE)
 
     # Filtriamo solo i candidati con gradi disponibili
@@ -239,9 +236,9 @@ for j, author_node in enumerate(filtered_authors):
         print(f"Processed {j + 1}/{len(filtered_authors)} authors. Estimated time remaining: {remaining_time / 60:.2f} minutes")
 
 # Salvataggio delle strutture su disco
-path = f'../anp_data/processed/gt_edge_index_{infosphere_type}_{infosphere_parameters}_{YEAR}_new_2.pt'
+path = f'../anp_data/processed/gt_edge_index_{infosphere_type}_{infosphere_parameters}_{YEAR}_new_3.pt'
 torch.save(edge_index, path)
-path = f'../anp_data/processed/gt_probability_dict_{infosphere_type}_{infosphere_parameters}_{YEAR}_new_2.pt'
+path = f'../anp_data/processed/gt_probability_dict_{infosphere_type}_{infosphere_parameters}_{YEAR}_new_3.pt'
 torch.save(probability_dict, path)
 
 
