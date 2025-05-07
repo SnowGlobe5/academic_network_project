@@ -94,21 +94,22 @@ if infosphere_type != 0:
         data['author', 'infosphere', 'paper'].edge_label = None
 
 # Try to predict all the future co-author or just the new one (not present in history)
-coauthor_function = generate_difference_co_author_edge_year if only_new else generate_co_author_edge_year
+coauthor_function = get_difference_author_edge_year if only_new else get_author_edge_year
 coauthor_year = YEAR if only_new else YEAR + 1
-coauthor_file = f"{ROOT}/processed/difference_co_author_edge{coauthor_year}.pt" if only_new \
-    else f"{ROOT}/processed/co_author_edge{coauthor_year}.pt"
+coauthor_file = f"{ROOT}/processed/difference_author_edge{coauthor_year}.pt" if only_new \
+    else f"{ROOT}/processed/author_edge{coauthor_year}.pt"
 
 # Use existing co-author edge if available, else generate
 if os.path.exists(coauthor_file):
     print("Co-author edge found!")
-    data['author', 'co_author', 'author'].edge_index = torch.load(coauthor_file, map_location=DEVICE)
+    data['author', 'co_author', 'author'].edge_index = torch.load(coauthor_file, map_location=DEVICE)["author"]
     data['author', 'co_author', 'author'].edge_label = None
 else:
     print("Generating co-author edge...")
-    data['author', 'co_author', 'author'].edge_index = coauthor_function(data, coauthor_year)
+    author_edge = coauthor_function(data, coauthor_year, DEVICE)
+    data['author', 'co_author', 'author'].edge_index = author_edge["author"]
     data['author', 'co_author', 'author'].edge_label = None
-    torch.save(data['author', 'co_author', 'author'].edge_index, coauthor_file)
+    torch.save(author_edge, coauthor_file)
 
 # Convert paper features to float and make the graph undirected
 data['paper'].x = data['paper'].x.to(torch.float)
@@ -211,9 +212,11 @@ class EdgeDecoder(torch.nn.Module):
 class Model(torch.nn.Module):
     def __init__(self, hidden_channels):
         super().__init__()
-        self.encoder = GNNEncoder(hidden_channels, hidden_channels, 2, 1, data.metadata())
+        self.encoder = GNNEncoder(hidden_channels, hidden_channels, 1, 2, data.metadata())
         # self.encoder = to_hetero(self.encoder, data.metadata(), aggr='sum')
         self.decoder = EdgeDecoder(hidden_channels)
+        self.embedding_author = torch.nn.Embedding(data["author"].num_nodes, 32)
+        self.embedding_topic = torch.nn.Embedding(data["topic"].num_nodes, 32)
 
     def forward(self, x_dict, edge_index_dict, edge_label_index):
         z_dict = self.encoder(x_dict, edge_index_dict)
@@ -224,8 +227,6 @@ class Model(torch.nn.Module):
 model = Model(hidden_channels=32).to(DEVICE)
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 lr_scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
-embedding_author = torch.nn.Embedding(data["author"].num_nodes, 32).to(DEVICE)
-embedding_topic = torch.nn.Embedding(data["topic"].num_nodes, 32).to(DEVICE)
 
 
 # Training and Testing Functions
@@ -239,8 +240,8 @@ def train():
         del batch['author', 'co_author', 'author']
 
         # Add node embeddings for message passing
-        batch['author'].x = embedding_author(batch['author'].n_id)
-        batch['topic'].x = embedding_topic(batch['topic'].n_id)
+        batch['author'].x = model.embedding_author(batch['author'].n_id)
+        batch['topic'].x = model.embedding_topic(batch['topic'].n_id)
 
         optimizer.zero_grad()
         pred = model(batch.x_dict, batch.edge_index_dict, edge_label_index)
@@ -270,8 +271,8 @@ def test(loader):
         del batch['author', 'co_author', 'author']
 
         # Add node embeddings for message passing
-        batch['author'].x = embedding_author(batch['author'].n_id)
-        batch['topic'].x = embedding_topic(batch['topic'].n_id)
+        batch['author'].x = model.embedding_author(batch['author'].n_id)
+        batch['topic'].x = model.embedding_topic(batch['topic'].n_id)
 
         pred = model(batch.x_dict, batch.edge_index_dict, edge_label_index)
         target = edge_label

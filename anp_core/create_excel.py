@@ -5,20 +5,20 @@ from openpyxl import Workbook
 from datetime import datetime
 
 # Folder containing the experiment folders
-base_folder = "/home/sabrina/academic_network_project/anp_models_ignore"
+base_folder = "/home/sabrina/academic_network_project/anp_models"
 
-date_lower = "2024_04_24"
-date_upper = "2024_10_16"
+date_lower = "2024_11_08"
+date_upper = "2024_11_10"
 lr_lower = 0.00001
-lr_upper = 0.00001
+lr_upper = 0.01
 
-infosphere_string = ["no_infosph", "future", "top_paper", "top_paper_topic"]
+infosphere_string = ["no_infosph", "future", "top_paper", "top_paper_topic", "N", "L"]
 # Convert date strings to integers for comparison
 date_lower_int = int(date_lower.replace("_", ""))
 date_upper_int = int(date_upper.replace("_", ""))
 
 # Dictionary to organize the results
-results = [[{}, {}, {}, {}], [{}, {}, {}, {}]]
+results = [[{}, {}, {}, {}, {}, {}], [{}, {}, {}, {}, {}, {}]]
 
 # Function to read the info.json file
 def read_info_json(folder):

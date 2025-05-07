@@ -98,21 +98,22 @@ if infosphere_type != 0:
         data['author', 'infosphere', 'paper'].edge_label = None
 
 # Try to predict all the future co-author or just the new one (not present in history)
-coauthor_function = generate_difference_co_author_edge_year if only_new else generate_co_author_edge_year
+coauthor_function = get_difference_author_edge_year if only_new else get_author_edge_year
 coauthor_year = YEAR if only_new else YEAR + 1
-coauthor_file = f"{ROOT}/processed/difference_co_author_edge{coauthor_year}.pt" if only_new \
-    else f"{ROOT}/processed/co_author_edge{coauthor_year}.pt"
+coauthor_file = f"{ROOT}/processed/difference_author_edge{coauthor_year}.pt" if only_new \
+    else f"{ROOT}/processed/author_edge{coauthor_year}.pt"
 
 # Use existing co-author edge if available, else generate
 if os.path.exists(coauthor_file):
     print("Co-author edge found!")
-    data['author', 'co_author', 'author'].edge_index = torch.load(coauthor_file, map_location=DEVICE)
+    data['author', 'co_author', 'author'].edge_index = torch.load(coauthor_file, map_location=DEVICE)["author"]
     data['author', 'co_author', 'author'].edge_label = None
 else:
     print("Generating co-author edge...")
-    data['author', 'co_author', 'author'].edge_index = coauthor_function(data, coauthor_year)
+    author_edge = coauthor_function(data, coauthor_year, DEVICE)
+    data['author', 'co_author', 'author'].edge_index = author_edge["author"]
     data['author', 'co_author', 'author'].edge_label = None
-    torch.save(data['author', 'co_author', 'author'].edge_index, coauthor_file)
+    torch.save(author_edge, coauthor_file)
 
 # Convert paper features to float and make the graph undirected
 data['paper'].x = data['paper'].x.to(torch.float)

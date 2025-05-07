@@ -174,3 +174,4 @@ log*
 *.pdf
 *.zip
 *.xlsx
+anp_nn/need_to_go/*
