@@ -137,11 +137,9 @@ class Model(torch.nn.Module):
 # Initialize and load the model
 model = torch.load(model_path, map_location=DEVICE)
 model.eval()
-
-# Parametri
 num_authors = author_embeddings.shape[0]
 
-# Funzione per calcolare la probabilità di connessione basata sugli embedding
+# Function to calculate connection probability based on embeddings
 def connection_probability(a, b):
     # Ensure a is a tensor of the same shape as b
     a_tensor = torch.full((b.shape[0],), a).to(DEVICE)  # Repeat a for the number of elements in b
@@ -149,8 +147,7 @@ def connection_probability(a, b):
     combined_tensor = torch.stack((a_tensor, b)).to(DEVICE)  # Concatenate a and b
     return model.decoder(author_embeddings_dict, combined_tensor)
 
-# Loop sugli autori per espandere il set di co-autori e generare connessioni
-# Ciclo sugli autori
+# Looping through authors to expand the co-author set and generate connections
 start_time = time.time()
 
 if infosphere_type == 1:
@@ -160,23 +157,20 @@ if infosphere_type == 1:
     ]
 elif infosphere_type == 2:
     authors_df = pd.read_csv("../anp_data/processed/relevant_authors_2020.csv")
-    # Converte la colonna 'author_id' in una lista
     filtered_authors = authors_df['author_id'].tolist()
 else:
     filtered_authors = [
     author_node for author_node in range(num_authors)
     if max_author_degrees[author_node] != 0 
-    and co_author_candidates_top[author_node] not in [None, []]  # Controlla che non sia None o lista vuota
+    and co_author_candidates_top[author_node] not in [None, []] 
     and (not isinstance(co_author_candidates_top[author_node], torch.Tensor) 
-         or co_author_candidates_top[author_node].numel() > 0)  # Se è un tensore, controlla che non sia vuoto
+         or co_author_candidates_top[author_node].numel() > 0) 
     ]
 
 current_author_degrees = torch.zeros(num_authors, device=DEVICE)
 
-# Rappresentazione dell'edge index
 edge_index = torch.empty((2, 0), dtype=torch.long, device=DEVICE)
 
-# Matrice delle probabilità sparsa
 probability_dict = {}
 
 for j, author_node in enumerate(filtered_authors):
@@ -184,7 +178,6 @@ for j, author_node in enumerate(filtered_authors):
         continue
 
     if infosphere_type == 1:
-        # Otteniamo i candidati di co-autori per l'autore corrente
         coauthor_candidates = co_author_candidates[author_node].to(DEVICE)
     elif infosphere_type == 2:
         combined_tensor = torch.cat((co_author_candidates_top, co_author_candidates_history[author_node]), dim=0)
@@ -193,49 +186,40 @@ for j, author_node in enumerate(filtered_authors):
         combined_tensor = torch.cat((co_author_candidates_top[author_node], co_author_candidates_history[author_node]), dim=0)
         coauthor_candidates = torch.unique(combined_tensor, dim=0).to(DEVICE)
 
-    # Filtriamo solo i candidati con gradi disponibili
     valid_mask = (coauthor_candidates > author_node) & \
                  (current_author_degrees[coauthor_candidates] < max_author_degrees[coauthor_candidates])
     valid_candidates = coauthor_candidates[valid_mask]
 
     if valid_candidates.size(0) == 0:
         continue
-
-    # Calcoliamo le probabilità per i candidati validi non ancora definite
+    
     prob_mask = torch.tensor([probability_dict.get((author_node, candidate), 0) == 0 for candidate in valid_candidates])
     new_probs = connection_probability(author_node, valid_candidates[prob_mask]).clamp(min=0, max=1)
     
-    # Aggiungiamo le nuove probabilità al dizionario
     for i, candidate in enumerate(valid_candidates[prob_mask]):
         probability_dict[(author_node, candidate.item())] = new_probs[i].item()
 
-    # Estrazione delle connessioni da campionare in batch
     connections = torch.tensor([probability_dict[(author_node, candidate.item())] for candidate in valid_candidates])
     
-    # Applica connessioni dove necessario
     connected_nodes = valid_candidates[connections > 0.5]
 
-    # Ordina i coautori in base alla probabilità di connessione
     sorted_indices = torch.argsort(connections[connections > 0.5], descending=True)
     connected_nodes = connected_nodes[sorted_indices]
 
     for coauthor_node in connected_nodes:
-        # Aggiorna l'edge index e i gradi correnti
         edge_index = torch.cat((edge_index, torch.tensor([[author_node], [coauthor_node]], device=DEVICE)), dim=1)
         current_author_degrees[author_node] += 1
         current_author_degrees[coauthor_node] += 1
 
-        # Controlla se è stato raggiunto il grado massimo per l'autore corrente
         if current_author_degrees[author_node] >= max_author_degrees[author_node]:
             break
 
-    # Stima del tempo rimanente ogni 10k autori
     if (j - 1) % 1000 == 0:
         elapsed_time = time.time() - start_time
         remaining_time = (elapsed_time / (j + 1)) * (len(filtered_authors) - j - 1)
         print(f"Processed {j + 1}/{len(filtered_authors)} authors. Estimated time remaining: {remaining_time / 60:.2f} minutes")
 
-# Salvataggio delle strutture su disco
+
 path = f'../anp_data/processed/gt_edge_index_{infosphere_type}_{infosphere_parameters}_{YEAR}_new_3.pt'
 torch.save(edge_index, path)
 path = f'../anp_data/processed/gt_probability_dict_{infosphere_type}_{infosphere_parameters}_{YEAR}_new_3.pt'
