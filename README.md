@@ -30,5 +30,6 @@ The `anp_nn` package contains Graph Neural Network models designed for predictio
 
 This addition allows for controlled benchmarking of models and recommender detection methods against known synthetic ground-truths.
 
+For the experiments in the paper, a learning rate of 0.00001 and 50 sampled edges for minibatch creation were used as hyperparameters. The other hyperparameters remain fixed and can be found in the code.
 ---
 
